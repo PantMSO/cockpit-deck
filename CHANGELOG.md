@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.1.1 (2026-11-24)
+
+First public release of the Skyhawk + stick work (1.1.0 was an internal build).
+
+**Added**
+- **Cessna 172 Skyhawk pages** (FLY, ENGINE, AUTOPILOT, RADIO, LIGHTS) that appear automatically when a C172 is
+  loaded in MSFS 2024, and back to the standard pages for other aircraft. `msfs.aircraft` in the settings can force either set.
+  - ENGINE: master BAT/ALT, avionics bus 1 and 2, fuel pump, magnetos (tap steps up to BOTH, hold 1 s for OFF),
+    spring-loaded starter (crank while held), mixture readout with rich / lean.
+  - AUTOPILOT: AP, FD, HDG, NAV, APR, ALT and V/S, each showing its target, plus one knob with − / + for
+    HDG, ALT, V/S, CRS and BARO.
+  - FLY: trim position, flaps in degrees, parking brake, live stick view, RPM + throttle, both fuel tanks, oil, fuel flow + EGT.
+  - LIGHTS: beacon, nav, strobe, taxi, landing, pitot heat, fuel selector, CHT, volts, auto start/stop (hold 1 s).
+- **Aircraft input events** through SimConnect (list, read, subscribe, set). The C172's magnetos, fuel selector and fuel
+  pump don't respond to the classic key events, and some classic SimVars don't follow its switches. Input events show the
+  switch's real position.
+- **Flight stick support** (Logitech Extreme 3D Pro by default, any joystick by USB id): a live stick key, keys light
+  while their stick button is held, and stick button 11 (unbound in MSFS) disconnects the autopilot, with **DISC** shown on the AP key.
+- **Hold-to-confirm** keys with a filling ring. A short tap shows *HOLD 1 S* instead of acting.
+- Keys can now act on release (used by the starter).
+- `tools/livecheck.js`: read-only check of every Skyhawk key against a running sim and the real stick.
+- 22 new automated checks (48 in total). The end-to-end test now runs offline (`COCKPITDECK_OFFLINE=1`), so it can't touch a running sim or stick.
+
+**Changed**
+- SimConnect events can carry a value (used for full-rich mixture).
+- The stick reader rides out brief read errors (up to about 0.5 s) instead of showing NOT FOUND, and looks for the stick again straight away if it really goes.
+- The log names both the aircraft title and model when the page set changes.
+- The process check behind automatic profile switching can fail now and then while MSFS is loading. Those failures are now logged at most once a minute.
+
 ## 1.0.3 (2026-11-24)
 
 **Fixed**

@@ -7,7 +7,8 @@
 <p align="center">
   A Stream Deck plugin that turns a 15-key Stream Deck into a <b>live cockpit panel</b> for
   <b>Microsoft Flight Simulator 2024</b> and a <b>telemetry dashboard</b> for <b>Forza Horizon 6</b>.<br>
-  Every key shows the game's real state: gear lights, autopilot modes, radio frequencies, revs, tyre temperatures.
+  Every key shows the game's real state: gear lights, autopilot modes, radio frequencies, revs, tyre temperatures.<br>
+  Fly the <b>Cessna 172 Skyhawk</b> and it gets its own pages that work hand in hand with your flight stick.
 </p>
 
 <p align="center">
@@ -26,6 +27,8 @@
 - [Features](#features)
 - [Microsoft Flight Simulator 2024](#microsoft-flight-simulator-2024)
   - [Flight](#flight-page) · [Autopilot](#autopilot-page) · [Lights](#lights-page) · [Radio](#radio-page) · [Systems](#systems-page)
+- [Cessna 172 Skyhawk + flight stick](#cessna-172-skyhawk--flight-stick)
+  - [Who does what](#who-does-what) · [FLY](#fly-page) · [ENGINE](#engine-page) · [AUTOPILOT](#autopilot-page-1) · [LIGHTS](#lights-page-1)
 - [Forza Horizon 6](#forza-horizon-6)
 - [What the colours mean](#what-the-colours-mean)
 - [Install](#install)
@@ -62,6 +65,9 @@ Cockpit Deck works differently:
 ## Features
 
 - **5 MSFS pages, 50 live keys:** Flight, Autopilot, Lights, Radio and Systems, switched with tabs on the bottom row.
+- **Cessna 172 Skyhawk pages:** load the C172 and the deck switches to FLY / ENGINE / AUTOPILOT / RADIO / LIGHTS: magnetos, starter, mixture, fuel selector, a GFC 700 autopilot with one knob for all targets, and engine gauges. Each key shows the switch's real position in the cockpit.
+- **Works with your flight stick:** keys light up while you hold the stick's trim, flaps or brake buttons, a live stick view shows the axes and throttle, and stick button 11 becomes AP disconnect.
+- **Hold-to-confirm for big actions:** magnetos OFF and engine auto-start/stop need a 1-second hold, shown by a filling ring.
 - **Real annunciators:** switches light up only when the sim says they're on, not when you pressed them.
 - **Three-light landing gear:** green = down and locked, red = in transit, dark = up. Fixed-gear aircraft are labelled.
 - **Hold-to-slew:** hold a ± key and the heading bug, altitude or frequency keeps moving (400 ms delay, then every 110 ms).
@@ -177,6 +183,123 @@ every 5 seconds, so you can start the plugin and the sim in any order.
 
 ---
 
+## Cessna 172 Skyhawk + flight stick
+
+When the **Cessna 172** is loaded (Asobo's C172SP G1000 in MSFS 2024), the MSFS profile swaps to five
+Skyhawk pages on its own: **FLY · ENGINE · AUTOPILOT · RADIO · LIGHTS**. Load another aircraft and it
+goes back to the standard pages. The plugin also reads your joystick, so the stick and the deck work as one setup.
+
+### Who does what
+
+The rule: **if you fly with it, it's on the stick. If it has a position you need to see, it's on the deck.**
+The stick keeps the axes, trim, flaps and brakes. The deck shows what those did and holds every switch, knob and lever the stick doesn't have.
+
+| Control | Stick (Logitech Extreme 3D Pro) | Deck |
+|---|---|---|
+| Pitch / roll / rudder | X / Y axes, twist | **STICK** key shows the stick live |
+| Throttle | Slider | **STICK** and **ENGINE RPM** show throttle % and RPM |
+| Elevator trim | Buttons **4** (up) / **6** (down) | **ELEV TRIM** shows the position and lights cyan while you hold 4 or 6 |
+| Flaps | Buttons **7** (up) / **9** (down) | **FLAPS** shows 0° / 10° / 20° / 30° and lights while you hold 7 or 9 |
+| Parking brake | Button **10** | **PARK BRAKE** shows SET / RELEASED and lights while you hold 10 |
+| Toe brakes | Button **12** | — |
+| Autopilot disconnect | Button **11** (new, handled by Cockpit Deck) | **AP** key flashes **DISC** for 3 s |
+| Magnetos, starter, mixture, master, avionics, fuel pump, fuel selector, lights, pitot heat, autopilot modes and targets | — | ENGINE, AUTOPILOT and LIGHTS pages |
+
+The button numbers above are the defaults, taken from a typical Extreme 3D Pro airplane setup in MSFS. Buttons
+4, 6, 7, 9, 10 and 12 stay bound in MSFS, and MSFS keeps handling them. Cockpit Deck only watches them so the
+matching key can light up. If your bindings differ, change `stick.echo` in the [settings file](#settings-file).
+**Button 11** is left unbound in that setup, so Cockpit Deck uses it for the one control a real C172 yoke has
+that was missing: the red **AP DISC** switch.
+
+> **Check your trim buttons in MSFS.** MSFS lets one button carry several bindings. If a trim button is also bound
+> to **Engine auto-start** or **Engine auto-shutdown**, trimming can start or stop the engine. In MSFS open
+> **Controls → your stick → airplanes profile**, search *auto*, and remove any stick buttons from those two entries.
+> The deck's **AUTO START / STOP** key (hold 1 s) replaces them. Cockpit Deck can't edit MSFS bindings itself
+> because MSFS stores them in your Xbox cloud save.
+
+### FLY page
+
+<img src="docs/images/skyhawk-fly.png" alt="Skyhawk FLY page" width="640">
+
+The FLY page shows what the stick is doing plus the gauges you glance at in flight.
+
+| Key | Shows | Press does |
+|---|---|---|
+| **ELEV TRIM** | Trim position on a scale, % nose up / down. Cyan ring while stick 4/6 is held | — |
+| **FLAPS ↑ / ↓** | Handle position in degrees | Flaps up / down a notch |
+| **PARK BRAKE** | SET (red) / RELEASED. Ring while stick 10 is held | Toggle |
+| **STICK** | Live crosshair (X/Y), twist bar and throttle slider. Shows **NOT FOUND** if unplugged | — |
+| **ENGINE RPM** | RPM (green 2,100 to 2,700, red above) and throttle % | — |
+| **FUEL GAL** | Left and right tank, amber under 10 gal, red under 5 | — |
+| **OIL** | Temperature (red over 245 °F) and pressure (green 50 to 90 psi, red under 20) | — |
+| **MIXTURE CHECK** | Fuel flow (GPH) and EGT, for leaning | — |
+| **PAUSE** | Sim paused / running | Pause |
+
+<img src="docs/images/skyhawk-stick-echo.png" alt="Stick and deck together" width="640">
+
+### ENGINE page
+
+<img src="docs/images/skyhawk-engine.png" alt="Skyhawk ENGINE page" width="640">
+
+The ENGINE page is laid out in the order you use it to start and run the engine.
+
+| Key | Shows | Press does |
+|---|---|---|
+| **MASTER BAT / ALT** | Each half of the master switch | Toggle |
+| **AVIONICS BUS 1 / BUS 2** | Each avionics switch | Toggle |
+| **FUEL PUMP** | Aux fuel pump | Toggle |
+| **MAGNETOS** | Key position OFF / R / L / BOTH and an L and R lamp | **Tap** turns one click (OFF → R → L → BOTH), stopping at BOTH. **Hold 1 s** for OFF, so a stray tap can't kill the engine |
+| **STARTER** | HOLD / CRANKING / RUNNING | **Hold** to crank, release to let go, like the spring-loaded key. Refused (⚠) if the engine is already running |
+| **MIXTURE** | Lever %, cyan at full rich, amber when leaned | Full rich |
+| **MIXTURE − / +** | — | Lean / enrich, hold to keep moving |
+
+<img src="docs/images/skyhawk-engine-start.png" alt="Engine page before start" width="640">
+
+### AUTOPILOT page
+
+<img src="docs/images/skyhawk-autopilot.png" alt="Skyhawk AUTOPILOT page" width="640">
+
+This page mirrors the G1000's GFC 700 autopilot. Every mode key shows its target, so you can see the heading bug, selected altitude or V/S without looking at the PFD.
+
+| Key | Shows | Press does |
+|---|---|---|
+| **AP** | ENGAGED / OFF, **DISC** after a stick disconnect | Autopilot on/off |
+| **FD** | Flight director | Toggle |
+| **HDG · NAV · APR · ALT · V/S** | Mode active, with the heading bug, course, selected altitude or V/S as the label | Engage / disengage that mode |
+| **KNOB** | The selected target and its value | **Tap** to choose what the knob turns: HDG → ALT → V/S → CRS → BARO |
+| **− / +** | What the knob is set to | Turn it, hold to spin |
+
+<img src="docs/images/skyhawk-ap-disc.png" alt="Autopilot disconnected from the stick" width="640">
+
+### LIGHTS page
+
+<img src="docs/images/skyhawk-lights.png" alt="Skyhawk LIGHTS page" width="640">
+
+| Key | Shows | Press does |
+|---|---|---|
+| **BEACON · NAV · STROBE · TAXI · LANDING** | Each light switch | Toggle |
+| **PITOT** | Pitot heat | Toggle |
+| **FUEL SELECTOR** | LEFT / BOTH / RIGHT (BOTH shows NORMAL) | Next position |
+| **CHT** | Cylinder head temperature | — |
+| **ELECTRICAL** | Bus and battery volts | — |
+| **AUTO START / STOP** | Engine running or off | **Hold 1 s** to auto-start, or auto-stop if running. A short tap only shows *HOLD 1 S* |
+
+The **RADIO** page is the same as the standard [Radio page](#radio-page).
+
+### Why the Skyhawk pages read "input events"
+
+In MSFS 2024 the C172's cockpit switches are driven by the aircraft's own **input events** (for example
+`ENGINE_MAGNETO_1`, `FUEL_SELECTOR_1`, `FUEL_PUMP_1`). Testing against the live aircraft showed:
+
+- The classic key events for magnetos, fuel selector and fuel pump (`MAGNETO1_LEFT`, `FUEL_SELECTOR_LEFT`, `TOGGLE_ELECT_FUEL_PUMP1`) **do nothing** in this aircraft.
+- Some classic SimVars **don't follow the switch**. `ELECTRICAL MASTER BATTERY` read ON while the battery switch was OFF, and `FUEL TANK SELECTOR` stayed on BOTH while the selector moved.
+
+So the Skyhawk switch keys set and read the input events directly. What the key shows is the position of the
+switch in the cockpit. Lights, pitot heat, trim, flaps, mixture and the autopilot also respond to classic events
+(also confirmed live), and those are used where they work.
+
+---
+
 ## Forza Horizon 6
 
 <img src="docs/images/forza-live.png" alt="Forza Horizon 6 telemetry dashboard" width="640">
@@ -282,6 +405,13 @@ the profiles by hand from Stream Deck's profile menu.
 ```json
 {
   "autoSwitch": true,
+  "msfs": { "aircraft": "auto" },
+  "stick": {
+    "enabled": true,
+    "device": "046d:c215",
+    "buttons": { "11": "AP_DISC" },
+    "echo": { "trim": [4, 6], "flapsUp": [7], "flapsDown": [9], "parkBrake": [10] }
+  },
   "forza": {
     "port": 5300,
     "listen": "0.0.0.0",
@@ -298,6 +428,11 @@ the profiles by hand from Stream Deck's profile menu.
 | Setting | What it does |
 |---|---|
 | `autoSwitch` | `true` switches profiles when a game starts or stops. |
+| `msfs.aircraft` | `auto` shows the Skyhawk pages when a C172 is loaded. `skyhawk` or `generic` always uses one set. |
+| `stick.enabled` | `false` stops reading the joystick. |
+| `stick.device` | USB id of the stick, `vendor:product` in hex. `046d:c215` is the Logitech Extreme 3D Pro. Find yours in Device Manager → the stick → Details → Hardware Ids (`VID_xxxx&PID_yyyy`). |
+| `stick.buttons` | Stick buttons Cockpit Deck acts on, by number. `AP_DISC` disconnects the autopilot. Any other text is sent as a sim event name, e.g. `"8": "TOGGLE_TAXI_LIGHTS"`. **Only use buttons MSFS has nothing bound to**, or both will act. `""` turns a button off. |
+| `stick.echo.*` | Which held stick buttons light the TRIM, FLAPS ↑, FLAPS ↓ and PARK BRAKE keys. Set them to match your MSFS bindings. |
 | `forza.port` | UDP port to listen on. Must match **Data Out IP Port** in Forza. |
 | `forza.listen` | `0.0.0.0` = all of your PC's addresses (recommended). `127.0.0.1` = this PC only. |
 | `forza.units` | `mph` or `kmh`. The SPEED key toggles this too. |
@@ -320,8 +455,10 @@ flowchart LR
         MSFS["MSFS 2024"]
         FH6["Forza Horizon 6"]
     end
+    STICKHW["Flight stick"]
     subgraph Plugin["Cockpit Deck plugin (Node.js 20)"]
-        SC["msfs.js<br/>SimConnect client"]
+        STK["stick.js<br/>joystick reader (winmm)"]
+        SC["msfs.js<br/>SimConnect client<br/>SimVars · events · input events"]
         UDP["forza.js<br/>UDP telemetry parser"]
         LAY["layouts.js<br/>what each key shows/does"]
         REN["render.js<br/>SVG → PNG key faces"]
@@ -332,6 +469,8 @@ flowchart LR
     DECK["15-key Stream Deck"]
 
     MSFS <-- "SimVars / events<br/>(SimConnect, port 500)" --> SC
+    STICKHW -- "axes + buttons" --> MSFS
+    STICKHW -- "axes + buttons (read-only)" --> STK --> CORE
     FH6 -- "Data Out (UDP 5300)" --> UDP
     SC --> CORE
     UDP --> CORE
@@ -359,6 +498,13 @@ flowchart LR
   about 15 fps, and an image is only sent to the deck when it differs from the last one.
 - **Key presses.** [`koffi`](https://github.com/Koromix/koffi) calls Windows' `SendInput` with hardware scan
   codes and holds each key for 60 ms, which DirectX and GDK games pick up reliably.
+- **Aircraft input events.** On connect, and whenever the aircraft changes, the plugin lists the aircraft's
+  input events (233 on the C172SP G1000). It subscribes to the ones on screen, so a switch flipped with the mouse
+  in the cockpit updates the deck straight away. The trim wheel's input value jitters by about 1e-8, so changes under 1e-4 are ignored.
+- **The stick.** `stick.js` finds the joystick by USB id through Windows' `winmm` joystick API and polls it every
+  25 ms. It only reads, so MSFS sees the stick exactly as before. If the stick is unplugged, it's picked up again within 3 s.
+- **Hold vs. tap.** Keys can act on press, while held (repeat), on release (the starter), after a 1 s hold
+  (magnetos OFF, auto start/stop) or on a short tap. The hold shows a ring filling around the key.
 
 ---
 
@@ -378,7 +524,8 @@ Stream Deck Things/
     │   │   ├── plugin.js                # Stream Deck connection, redraw loop, presses, auto-profiles
     │   │   ├── layouts.js               # every page and key: what it shows and what it does
     │   │   ├── render.js                # key-face drawing (SVG → PNG)
-    │   │   ├── msfs.js                  # SimConnect client
+    │   │   ├── msfs.js                  # SimConnect client (SimVars, events, input events)
+    │   │   ├── stick.js                 # joystick reader (read-only)
     │   │   ├── forza.js                 # Forza Data Out listener + parser
     │   │   └── keys.js                  # scan-code key presses
     │   ├── imgs/                        # plugin / action icons (generated)
@@ -386,7 +533,8 @@ Stream Deck Things/
     └── tools/
         ├── build.ps1                    # icons + profiles + package → dist/
         ├── build.js                     # draws icons, writes profile layouts
-        ├── test.js                      # 26 automated checks
+        ├── test.js                      # 48 automated checks
+        ├── livecheck.js                 # read-only check against a running sim + stick
         ├── fixtures.js                  # sample flight + race data for tests and pictures
         ├── preview.js                   # renders a 5×3 page to one PNG
         └── screenshots.js               # regenerates docs/images
@@ -409,16 +557,25 @@ npm ci                                   # install the libraries
 node ..\tools\test.js "$env:TEMP\cockpitdeck-test" (Get-Command node).Source
 ```
 
-The 26 checks cover:
+The 48 checks cover:
 
 | Area | What's checked |
 |---|---|
 | Forza parser | Byte offsets for all three packet sizes, speed/power/tyre conversions, reverse & neutral, junk packets rejected |
 | Profiles | The names used for auto-switching exist in `manifest.json` and as profile files |
-| Rendering | All 5 MSFS pages (live and no-sim) and the Forza dash (live and no-data) draw without errors |
-| End-to-end | Starts the real plugin against a fake Stream Deck and checks registration, all 15 keys drawn as PNG, tab presses changing pages, ⚠ alert with no sim, Forza packets updating the dash, no crash |
+| Rendering | All 5 standard MSFS pages, all 5 Skyhawk pages (live and no-sim each) and the Forza dash (live and no-data) draw without errors |
+| Skyhawk behaviour | Aircraft detection; magnetos step up and stop at BOTH, OFF only on hold; starter cranks while held, returns to BOTH, refuses when running; switches set the right input events; fuel selector cycle; AP knob targets; stick echo rings; AP DISC flash; hold-only keys never act on a tap |
+| End-to-end | Starts the real plugin against a fake Stream Deck and checks registration, all 15 keys drawn as PNG, tab presses changing pages, ⚠ alert with no sim, a short tap on a hold key only showing the hint, a 1 s hold animating the ring and then firing, Forza packets updating the dash, no crash |
 
-The end-to-end test uses its own data folder and port (5399), so it never touches an installed copy.
+The end-to-end test uses its own data folder and port (5399), and runs the plugin with `COCKPITDECK_OFFLINE=1`,
+so it never touches an installed copy, a running sim or your stick.
+
+**Check against a running sim (read-only):** with MSFS 2024 running, this draws every Skyhawk page from live
+data and lists any SimVar or input event that has no value. It never sends anything to the sim.
+
+```powershell
+node ..\tools\livecheck.js "$env:TEMP\cockpitdeck-live"
+```
 
 **Build the installable package:**
 
@@ -453,6 +610,11 @@ endpoint on `127.0.0.1:28650`. Remove the file again for normal use.
 | Forza keys don't react | The game window must be focused. If you rebound a control in Forza, set the same key in the settings file. |
 | Deck doesn't switch profile | Check `autoSwitch` is `true`. The log shows `msfs started` and `switch … -> CockpitDeck-MSFS2024` when it works. |
 | A key shows ⚠ | The press failed: no sim connected, or an unknown key name. The reason is in the log. |
+| Trimming starts or stops the engine | A trim button is also bound to engine auto-start/shutdown in MSFS. See [Who does what](#who-does-what). |
+| **STICK** key says **NOT FOUND** | Check the stick is plugged in and shows in Windows' *Set up USB game controllers*. For a different stick, set `stick.device` to its USB id. |
+| Stick button 11 does nothing | AP DISC only acts when the autopilot is on. The log shows `stick button 11 AP disconnect`. |
+| Skyhawk pages don't appear | The log shows `msfs pages: skyhawk (...)` when a C172 loads. Other Cessnas use the standard pages. Set `msfs.aircraft` to `skyhawk` to force them. |
+| A Skyhawk switch key shows dashes | That aircraft doesn't have that input event (e.g. a third-party C172). The rest still work. |
 
 **Log file:** `%APPDATA%\CockpitDeck\plugin.log`. If it's over 1 MB when the plugin starts, it's renamed to `plugin.log.old` and a fresh one begins.
 
@@ -467,16 +629,28 @@ Being upfront about what has and hasn't been verified:
 - The plugin connects and detects the deck (and Stream Deck Mobile)
 - The MSFS profile shows all 15 keys correctly. The exact images sent to the device were captured and checked.
 - Automatic switch to the MSFS profile when `FlightSimulator2024.exe` starts, and back when it exits
-- All 26 automated checks pass
+- All 48 automated checks pass
 
-**Not yet verified with the real games:**
-- A live MSFS 2024 flight. The SimConnect event and SimVar names are standard SDK names, but some aircraft may not support all of them.
+**Verified live in MSFS 2024 with the Asobo C172SP G1000 and a Logitech Extreme 3D Pro (1.1.x):**
+- Aircraft detection, the list of 233 input events, and every SimVar and input event the Skyhawk pages read, all with live values in flight and parked cold-and-dark (`tools/livecheck.js`)
+- Setting `ENGINE_MAGNETO_1` (R / L / BOTH, each magneto actually dropping out), `FUEL_SELECTOR_1`, `FUEL_PUMP_1`, `DEICE_PITOT_1`, `LANDING_GEAR_PARKINGBRAKE` and avionics bus 2, then restoring them
+- Classic events working in this aircraft: pitot heat, landing and taxi lights, flight director, heading bug, altitude select, course, baro, elevator trim, mixture
+- Input-event change notifications arriving live (throttle, trim wheel)
+- The stick found by USB id with axes and buttons read while flying
+
+**Not yet verified live:**
+- The starter position (`ENGINE_MAGNETO_1` = 4) actually cranking, and auto start/stop from the deck. Testing these needed an engine start, which wasn't done during an active flight.
+- Fuel selector RIGHT. LEFT and BOTH were confirmed through the fuel system junction, and RIGHT follows the same order.
+- GFC 700 mode keys (AP, HDG, NAV, APR, ALT, V/S) and the COM/NAV tuning keys in the C172. They use standard events, but only FD and the target knobs were tested.
+- A full standard-page flight in other aircraft. Some aircraft may not support every standard event and SimVar.
 - A live Forza Horizon 6 session. FH6's exact packet size hasn't been confirmed; the parser follows the Horizon 4/5 format.
 - Forza's default keys were checked against published control lists for **Rewind (Backspace)** and **Horn (H)**. Other functions were left off the deck because their defaults couldn't be confirmed.
 
 **Limits:**
 - Profiles are laid out for the 15-key Stream Deck. XL, Plus, Mini and Neo aren't laid out yet.
 - Engine, fuel pump, alternator and RPM keys read engine 1 only.
+- The Skyhawk pages are built for Asobo's C172SP G1000 in MSFS 2024. The classic steam-gauge C172 and add-on Skyhawks may use different input events, and keys for any they lack show dashes.
+- The stick buttons Cockpit Deck acts on must be unbound in MSFS, or both will act. MSFS bindings can't be changed by the plugin.
 - Windows only (SimConnect, SendInput and the Xbox-app games are Windows-specific).
 
 ---

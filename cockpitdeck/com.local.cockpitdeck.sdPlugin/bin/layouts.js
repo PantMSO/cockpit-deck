@@ -148,15 +148,215 @@ const MSFS_PAGES = [
   ],
 ];
 
-function msfsSlot(slot, page) {
+// ---------------------------------------------------------------- Cessna 172 Skyhawk (MSFS 2024, Asobo C172SP G1000)
+// Rule: flying (axes, trim, flaps, brakes) stays on the stick; anything with a position you need to see lives here.
+// Cockpit switches use the aircraft's own input events (checked live in the 2024 C172SP): the old key events for
+// magnetos, fuel selector and fuel pump do nothing in this aircraft, and the matching SimVars don't follow the switch.
+
+const ON = (x) => (x == null ? null : x > 0.5);
+const stickEcho = (s, key) => {
+  const st = s.stick();
+  return st && st.connected && (s.cfg.stick.echo[key] || []).some((b) => st.held(b)) ? C.cyan : undefined;
+};
+const stickLabel = (s, key) => (s.cfg.stick.echo[key] || []).join('/');
+
+/** Cockpit switch backed by an input event: shows its position, tap flips it. */
+function sw(caption, label, input, opts = {}) {
+  const on = opts.on == null ? 1 : opts.on;
+  return {
+    draw: (s) => { const x = s.input(input); return { style: 'toggle', caption, label, state: x == null ? null : ON(x / on), color: opts.color, onText: opts.onText, offText: opts.offText }; },
+    press: (s) => { const cur = s.input(input); if (cur == null) throw new Error(input + ' unavailable'); s.setInput(input, cur / on > 0.5 ? 0 : on); },
+  };
+}
+
+const MAG = 'ENGINE_MAGNETO_1'; // 0 OFF, 1 R, 2 L, 3 BOTH, 4 START
+const magnetoKey = {
+  draw: (s) => ({ style: 'magnetos', pos: s.input(MAG) == null ? null : Math.round(s.input(MAG)), note: 'TAP: NEXT · HOLD: OFF' }),
+  // tap steps OFF -> R -> L -> BOTH and stops there; turning OFF needs a 1 s hold
+  tap: (s) => { const p = s.input(MAG); if (p == null) throw new Error('magnetos unavailable'); if (Math.round(p) < 3) s.setInput(MAG, Math.round(p) + 1); },
+  hold: { ms: 1000, fn: (s) => s.setInput(MAG, 0) },
+};
+const starterKey = {
+  draw: (s) => {
+    const running = bool(s.v('ENG COMBUSTION:1', 'Bool'));
+    const cranking = s.input(MAG) != null && Math.round(s.input(MAG)) === 4;
+    return { style: 'toggle', caption: 'STARTER', label: 'START', state: s.input(MAG) == null ? null : cranking, color: C.amber,
+      onText: 'CRANKING', offText: running ? 'RUNNING' : 'HOLD' };
+  },
+  // spring-loaded like the real key: START while held, back to BOTH on release
+  press: (s) => {
+    if (bool(s.v('ENG COMBUSTION:1', 'Bool'))) throw new Error('engine already running');
+    if (s.input(MAG) == null) throw new Error('magnetos unavailable');
+    s.setInput(MAG, 4); s.k.cranking = true;
+  },
+  release: (s) => { if (s.k.cranking) { s.k.cranking = false; s.setInput(MAG, 3); } },
+};
+
+const FUEL_SEL = 'FUEL_SELECTOR_1'; // 0 LEFT, 1 BOTH, 2 RIGHT
+const fuelSelKey = {
+  draw: (s) => {
+    const p = s.input(FUEL_SEL);
+    const names = ['LEFT', 'BOTH', 'RIGHT'];
+    const name = p == null ? null : names[Math.round(p)];
+    return { style: 'toggle', caption: 'FUEL SELECTOR', label: name || '– –', state: p == null ? null : Math.round(p) === 1, color: C.green, onText: 'NORMAL', offText: 'ONE TANK' };
+  },
+  press: (s) => { const p = s.input(FUEL_SEL); if (p == null) throw new Error('fuel selector unavailable'); s.setInput(FUEL_SEL, (Math.round(p) + 1) % 3); },
+};
+
+const trimKey = {
+  draw: (s) => ({ style: 'trim', pct: s.v('ELEVATOR TRIM PCT', 'Percent Over 100'), note: 'BTN ' + stickLabel(s, 'trim'), ring: stickEcho(s, 'trim') }),
+};
+const skyFlaps = (dir, event, echo) => ({
+  draw: (s) => ({ style: 'flaps', dir, index: s.v('FLAPS HANDLE INDEX', 'Number'), count: s.v('FLAPS NUM HANDLE POSITIONS', 'Number'), degrees: [0, 10, 20, 30], ring: stickEcho(s, echo) }),
+  press: (s) => s.send(event),
+});
+const parkKey = {
+  draw: (s) => ({ style: 'toggle', caption: 'PARK BRAKE', label: 'PARK', state: bool(s.v('BRAKE PARKING POSITION', 'Bool')), color: C.red, onText: 'SET', offText: 'RELEASED', ring: stickEcho(s, 'parkBrake') }),
+  press: (s) => { const cur = s.input('LANDING_GEAR_PARKINGBRAKE'); if (cur == null) throw new Error('parking brake unavailable'); s.setInput('LANDING_GEAR_PARKINGBRAKE', cur > 50 ? 0 : 100); },
+};
+const stickKey = {
+  draw: (s) => {
+    const st = s.stick();
+    return { style: 'stick', connected: !!(st && st.connected), x: st ? st.axes.x : 0, y: st ? st.axes.y : 0, twist: st ? st.axes.twist : 0, slider: st ? st.axes.slider : 0,
+      throttle: s.v('GENERAL ENG THROTTLE LEVER POSITION:1', 'Percent'), footer: s.cfg.stick.enabled ? 'NOT FOUND' : 'OFF' };
+  },
+};
+const rpmKey = {
+  draw: (s) => {
+    const r = s.v('GENERAL ENG RPM:1', 'Rpm'), t = s.v('GENERAL ENG THROTTLE LEVER POSITION:1', 'Percent');
+    return { style: 'value', caption: 'ENGINE RPM', value: r == null ? null : n(Math.round(r / 10) * 10), unit: t == null ? 'RPM' : `THROTTLE ${Math.round(t)}%`,
+      color: r == null ? undefined : r > 2700 ? C.red : r >= 2100 ? C.green : C.cyan };
+  },
+};
+const tanksKey = {
+  draw: (s) => ({ style: 'tanks', left: s.v('FUEL TANK LEFT MAIN QUANTITY', 'Gallons'), right: s.v('FUEL TANK RIGHT MAIN QUANTITY', 'Gallons'), cap: s.v('FUEL TANK LEFT MAIN CAPACITY', 'Gallons') }),
+};
+// C172SP limits (POH): oil temp max 245 °F, oil pressure 50-90 psi normal, 20 min, 115 max.
+const oilKey = {
+  draw: (s) => {
+    const t = s.v('GENERAL ENG OIL TEMPERATURE:1', 'Fahrenheit'), p = s.v('GENERAL ENG OIL PRESSURE:1', 'Psi');
+    return { style: 'dual', caption: 'OIL', rows: [
+      { label: 'TEMP', unit: '°F', value: t == null ? null : Math.round(t), color: t > 245 ? C.red : t >= 100 ? C.green : C.cyan },
+      { label: 'PRESS', unit: 'PSI', value: p == null ? null : Math.round(p), color: p < 20 || p > 115 ? C.red : p >= 50 && p <= 90 ? C.green : C.amber },
+    ] };
+  },
+};
+const flowKey = {
+  draw: (s) => {
+    const f = s.v('ENG FUEL FLOW GPH:1', 'Gallons per hour'), e = s.v('GENERAL ENG EXHAUST GAS TEMPERATURE:1', 'Fahrenheit');
+    return { style: 'dual', caption: 'MIXTURE CHECK', rows: [
+      { label: 'FUEL FLOW', unit: 'GPH', value: f == null ? null : f.toFixed(1), color: C.cyan },
+      { label: 'EGT', unit: '°F', value: e == null ? null : Math.round(e), color: C.amber },
+    ] };
+  },
+};
+const voltsKey = {
+  draw: (s) => {
+    const b = s.v('ELECTRICAL BUS VOLTAGE:1', 'Volts'), a = s.v('ELECTRICAL BATTERY VOLTAGE', 'Volts');
+    return { style: 'dual', caption: 'ELECTRICAL', rows: [
+      { label: 'BUS', unit: 'V', value: b == null ? null : b.toFixed(1), color: b < 25 ? C.amber : C.green },
+      { label: 'BATTERY', unit: 'V', value: a == null ? null : a.toFixed(1), color: a < 24 ? C.amber : C.green },
+    ] };
+  },
+};
+const chtKey = readout('CHT', 'ENG CYLINDER HEAD TEMPERATURE:1', 'Fahrenheit', (x) => (x == null ? null : String(Math.round(x))), '°F', { color: C.amber });
+const mixtureKey = {
+  draw: (s) => {
+    const m = s.v('GENERAL ENG MIXTURE LEVER POSITION:1', 'Percent');
+    return { style: 'value', caption: 'MIXTURE', value: m == null ? null : Math.round(m) + '%', unit: 'TAP: RICH', color: m == null ? undefined : m >= 99 ? C.cyan : C.amber };
+  },
+  press: (s) => s.send('MIXTURE1_SET', 16383),
+};
+const autoStartKey = {
+  draw: (s) => {
+    const running = bool(s.v('ENG COMBUSTION:1', 'Bool'));
+    return { style: 'toggle', caption: 'HOLD 1 S', label: running ? 'AUTO STOP' : 'AUTO START', state: running == null ? null : running, onText: 'RUNNING', offText: 'ENGINE OFF' };
+  },
+  hold: { ms: 1000, fn: (s) => s.send(bool(s.v('ENG COMBUSTION:1', 'Bool')) ? 'ENGINE_AUTO_SHUTDOWN' : 'ENGINE_AUTO_START') },
+};
+
+// The AP knob: tap to choose what the − / + keys turn.
+const KNOB = [
+  { name: 'HDG', unit: 'BUG', dec: 'HEADING_BUG_DEC', inc: 'HEADING_BUG_INC', val: (s) => hdg(s.v('AUTOPILOT HEADING LOCK DIR', 'Degrees')), color: C.magenta },
+  { name: 'ALT', unit: 'FT SEL', dec: 'AP_ALT_VAR_DEC', inc: 'AP_ALT_VAR_INC', val: (s) => n(s.v('AUTOPILOT ALTITUDE LOCK VAR', 'Feet')), color: C.magenta },
+  { name: 'V/S', unit: 'FPM', dec: 'AP_VS_VAR_DEC', inc: 'AP_VS_VAR_INC', val: (s) => { const x = s.v('AUTOPILOT VERTICAL HOLD VAR', 'Feet per minute'); return x == null ? null : (x > 0 ? '+' : '') + n(x); }, color: C.magenta },
+  { name: 'CRS', unit: 'NAV 1', dec: 'VOR1_OBI_DEC', inc: 'VOR1_OBI_INC', val: (s) => hdg(s.v('NAV OBS:1', 'Degrees')), color: C.cyan },
+  { name: 'BARO', unit: 'IN HG', dec: 'KOHLSMAN_DEC', inc: 'KOHLSMAN_INC', val: (s) => { const x = s.v('KOHLSMAN SETTING HG:1', 'Inches of Mercury'); return x == null ? null : x.toFixed(2); }, color: C.cyan },
+];
+const knobKey = {
+  draw: (s) => { const f = KNOB[s.knob()]; return { style: 'value', caption: `KNOB: ${f.name}`, value: f.val(s), unit: f.unit + ' · TAP', color: f.color, ring: C.cyan }; },
+  press: (s) => s.setKnob((s.knob() + 1) % KNOB.length),
+};
+const knobTurn = (dir) => ({
+  draw: (s) => ({ style: 'button', caption: KNOB[s.knob()].name, glyph: dir < 0 ? 'minus' : 'plus', label: 'HOLD TO SPIN' }),
+  press: (s) => s.send(dir < 0 ? KNOB[s.knob()].dec : KNOB[s.knob()].inc),
+  repeat: true,
+});
+/** AP mode key whose label is that mode's target. */
+function apMode(caption, event, modeVar, label) {
+  return {
+    draw: (s) => ({ style: 'toggle', caption, label: label(s), state: bool(s.v(modeVar, 'Bool')), color: C.green }),
+    press: (s) => s.send(event),
+  };
+}
+const apMaster = {
+  draw: (s) => {
+    const disc = s.apDisc();
+    return { style: 'toggle', caption: 'AUTOPILOT', label: 'AP', state: bool(s.v('AUTOPILOT MASTER', 'Bool')), onText: 'ENGAGED', offText: disc ? 'DISC' : 'OFF', ring: disc ? C.amber : undefined };
+  },
+  press: (s) => s.send('AP_MASTER'),
+};
+
+const SKYHAWK_TABS = [
+  { label: 'FLY', icon: 'flight' },
+  { label: 'ENGINE', icon: 'engine' },
+  { label: 'AUTOPILOT', icon: 'ap' },
+  { label: 'RADIO', icon: 'radio' },
+  { label: 'LIGHTS', icon: 'lights' },
+];
+
+const SKYHAWK_PAGES = [
+  // FLY: what the stick moves, shown back to you, plus the engine gauges you glance at
+  [trimKey, skyFlaps('up', 'FLAPS_DECR', 'flapsUp'), skyFlaps('down', 'FLAPS_INCR', 'flapsDown'), parkKey, stickKey,
+    rpmKey, tanksKey, oilKey, flowKey, pauseKey],
+  // ENGINE: start and run
+  [sw('MASTER', 'BAT', 'ELECTRICAL_BATTERY_1'), sw('MASTER', 'ALT', 'ELECTRICAL_ALTERNATOR_1'),
+    sw('AVIONICS', 'BUS 1', 'ELECTRICAL_LINE_BUS_1_TO_AVIONICS_BUS_1'), sw('AVIONICS', 'BUS 2', 'ELECTRICAL_LINE_BUS_2_TO_AVIONICS_BUS_2'),
+    sw('FUEL', 'PUMP', 'FUEL_PUMP_1', { color: C.amber }),
+    magnetoKey, starterKey, mixtureKey, btn('MIXTURE', 'minus', 'LEAN · HOLD', 'MIXTURE_DECR', true), btn('MIXTURE', 'plus', 'RICH · HOLD', 'MIXTURE_INCR', true)],
+  // AUTOPILOT: GFC 700 modes, each showing its target; one knob for all targets
+  [apMaster,
+    { draw: (s) => ({ style: 'toggle', caption: 'FLIGHT DIR', label: 'FD', state: bool(s.v('AUTOPILOT FLIGHT DIRECTOR ACTIVE', 'Bool')), color: C.magenta }), press: (s) => s.send('TOGGLE_FLIGHT_DIRECTOR') },
+    apMode('HDG', 'AP_PANEL_HEADING_HOLD', 'AUTOPILOT HEADING LOCK', (s) => hdg(s.v('AUTOPILOT HEADING LOCK DIR', 'Degrees')) || 'HDG'),
+    apMode('NAV', 'AP_NAV1_HOLD', 'AUTOPILOT NAV1 LOCK', (s) => { const c = hdg(s.v('NAV OBS:1', 'Degrees')); return c ? 'CRS ' + c : 'NAV'; }),
+    apMode('APPROACH', 'AP_APR_HOLD', 'AUTOPILOT APPROACH HOLD', () => 'APR'),
+    apMode('ALT', 'AP_PANEL_ALTITUDE_HOLD', 'AUTOPILOT ALTITUDE LOCK', (s) => n(s.v('AUTOPILOT ALTITUDE LOCK VAR', 'Feet')) || 'ALT'),
+    apMode('V/S', 'AP_PANEL_VS_HOLD', 'AUTOPILOT VERTICAL HOLD', (s) => { const x = s.v('AUTOPILOT VERTICAL HOLD VAR', 'Feet per minute'); return x == null ? 'V/S' : (x > 0 ? '+' : '') + n(x); }),
+    knobKey, knobTurn(-1), knobTurn(1)],
+  // RADIO: same as the generic page
+  null,
+  // LIGHTS + the switches you set once per flight
+  [sw('LIGHTS', 'BEACON', 'LIGHTING_BEACON_1', { color: C.amber }), sw('LIGHTS', 'NAV', 'LIGHTING_NAV_0', { color: C.amber }),
+    sw('LIGHTS', 'STROBE', 'LIGHTING_STROBE_0', { color: C.amber }), sw('LIGHTS', 'TAXI', 'LIGHTING_TAXI_1', { color: C.amber }),
+    sw('LIGHTS', 'LANDING', 'LIGHTING_LANDING_1', { color: C.amber }),
+    sw('ANTI-ICE', 'PITOT', 'DEICE_PITOT_1', { color: C.cyan }), fuelSelKey, chtKey, voltsKey, autoStartKey],
+];
+SKYHAWK_PAGES[3] = MSFS_PAGES[3];
+
+/** True when the loaded aircraft is a Cessna 172 (title "C172SP G1000 ..." / ATC model "...C172..."). */
+const isSkyhawk = (title, model) => /c172|skyhawk|\b172\b/i.test(String(title || '')) || /c172/i.test(String(model || ''));
+
+function msfsSlot(slot, page, mode = 'generic') {
+  const tabs = mode === 'skyhawk' ? SKYHAWK_TABS : MSFS_TABS;
+  const pages = mode === 'skyhawk' ? SKYHAWK_PAGES : MSFS_PAGES;
   if (slot >= 10 && slot < 15) {
     const i = slot - 10;
     return {
-      draw: (s) => ({ style: 'tab', ...MSFS_TABS[i], active: page === i, link: s.connected() }),
+      draw: (s) => ({ style: 'tab', ...tabs[i], active: page === i, link: s.connected() }),
       press: (s) => s.setPage(i),
     };
   }
-  return MSFS_PAGES[page][slot] || null;
+  return (pages[page] && pages[page][slot]) || null;
 }
 
 // ---------------------------------------------------------------- Forza Horizon 6
@@ -206,4 +406,4 @@ const FORZA = [
 
 function forzaSlot(slot) { return FORZA[slot] || null; }
 
-module.exports = { msfsSlot, forzaSlot, MSFS_PAGES, MSFS_TABS, FORZA };
+module.exports = { msfsSlot, forzaSlot, isSkyhawk, MSFS_PAGES, MSFS_TABS, SKYHAWK_PAGES, SKYHAWK_TABS, KNOB, FORZA };

@@ -3,10 +3,10 @@
 // usage: node tools/screenshots.js
 const fs = require('fs');
 const path = require('path');
-const { forzaPacket, scopeFor, PLUGIN } = require('./fixtures.js');
+const { forzaPacket, scopeFor, fakeStick, PLUGIN } = require('./fixtures.js');
 const { Resvg } = require(path.join(PLUGIN, 'node_modules', '@resvg', 'resvg-js'));
 const { renderKey } = require(path.join(PLUGIN, 'bin', 'render.js'));
-const { msfsSlot, forzaSlot, MSFS_TABS } = require(path.join(PLUGIN, 'bin', 'layouts.js'));
+const { msfsSlot, forzaSlot, MSFS_TABS, SKYHAWK_TABS } = require(path.join(PLUGIN, 'bin', 'layouts.js'));
 const { parse } = require(path.join(PLUGIN, 'bin', 'forza.js'));
 
 const OUT = path.join(__dirname, '..', '..', 'docs', 'images');
@@ -55,6 +55,23 @@ deckImage('msfs-gear-transit.png', msfsPage(0, scopeFor(true, null, {
   'SPOILERS ARMED': 1, 'AIRSPEED INDICATED': 78, 'INDICATED ALTITUDE': 1210, 'VERTICAL SPEED': -520,
 })));
 
+// --- Cessna 172 Skyhawk pages (stick at rest, nothing held)
+const skyPage = (page, s) => [...Array(15).keys()].map((i) => msfsSlot(i, page, 'skyhawk').draw(s));
+SKYHAWK_TABS.forEach((tab, p) => { if (p !== 3) deckImage(`skyhawk-${tab.label.toLowerCase()}.png`, skyPage(p, live)); });
+// stick and deck together: trim-down (stick 6) held on approach, flaps 20°, park brake off
+deckImage('skyhawk-stick-echo.png', skyPage(0, scopeFor(true, null, {
+  'ELEVATOR TRIM PCT': 0.21, 'FLAPS HANDLE INDEX': 2, 'GENERAL ENG RPM:1': 1650, 'GENERAL ENG THROTTLE LEVER POSITION:1': 31,
+  'ENG FUEL FLOW GPH:1': 5.2, 'GENERAL ENG EXHAUST GAS TEMPERATURE:1': 1180,
+}, { stick: fakeStick(true, [6]) })), 'Holding stick button 6 (trim): the TRIM key lights cyan while the trim moves');
+// AP disconnected from the stick (button 11)
+deckImage('skyhawk-ap-disc.png', skyPage(2, scopeFor(true, null, { 'AUTOPILOT MASTER': 0, 'AUTOPILOT HEADING LOCK': 0, 'AUTOPILOT VERTICAL HOLD': 0 }, { apDisc: true })),
+  'Stick button 11 disconnects the autopilot: the AP key flashes DISC for 3 seconds');
+// engine start: battery on, magnetos BOTH, fuel pump on, engine not yet running
+deckImage('skyhawk-engine-start.png', skyPage(1, scopeFor(true, null, {
+  'ENG COMBUSTION:1': 0, 'GENERAL ENG MIXTURE LEVER POSITION:1': 100,
+}, { inputs: { ELECTRICAL_LINE_BUS_1_TO_AVIONICS_BUS_1: 0, ELECTRICAL_LINE_BUS_2_TO_AVIONICS_BUS_2: 0, FUEL_PUMP_1: 1 } })),
+'Before start: master on, avionics off, fuel pump on, mixture rich, magnetos BOTH');
+
 // --- Forza
 const race = parse(forzaPacket());
 deckImage('forza-live.png', forzaPage(race));
@@ -77,6 +94,11 @@ const gallery = [
   [{ style: 'gearBig', gear: 'R' }, 'Gear: reverse'],
   [{ style: 'tyres', temps: [48, 84, 104, 122] }, 'Tyres: cold to hot'],
   [{ style: 'button', caption: 'HDG BUG', glyph: 'plus', label: 'HOLD TO SLEW' }, 'Hold to repeat'],
+  [{ style: 'magnetos', pos: 3, note: 'TAP: NEXT · HOLD: OFF' }, 'Magnetos: BOTH'],
+  [{ style: 'trim', pct: 0.14, note: 'BTN 4/6', ring: '#3fd8ff' }, 'Trim: stick button held'],
+  [{ style: 'tanks', left: 18.4, right: 4.2, cap: 28 }, 'Fuel: right tank low'],
+  [{ style: 'toggle', caption: 'HOLD 1 S', label: 'AUTO START', state: false, offText: 'ENGINE OFF', progress: 0.6 }, 'Hold-to-confirm ring'],
+  [{ style: 'stick', connected: true, x: 0.3, y: -0.4, twist: -0.3, slider: 0.62, throttle: 62 }, 'Live stick view'],
 ];
 {
   const cols = 5, cw = 200, ch = 230, W = cols * cw + 40, H = Math.ceil(gallery.length / cols) * ch + 40;

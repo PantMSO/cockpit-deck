@@ -5,9 +5,10 @@ const path = require('path');
 const { execFile } = require('child_process');
 const WebSocket = require('ws');
 const { renderKey } = require('./render.js');
-const { msfsSlot, forzaSlot } = require('./layouts.js');
+const { msfsSlot, forzaSlot, isSkyhawk } = require('./layouts.js');
 const { Msfs } = require('./msfs.js');
 const { Forza } = require('./forza.js');
+const { Stick } = require('./stick.js');
 const keys = require('./keys.js');
 
 const ACTION = 'com.local.cockpitdeck.slot';
@@ -39,8 +40,18 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e)));
 
 const DEFAULT_CFG = {
   autoSwitch: true,
+  // aircraft: "auto" picks the Skyhawk pages when a Cessna 172 is loaded; "skyhawk" or "generic" forces one set.
+  msfs: { aircraft: 'auto' },
+  // Stick buttons Cockpit Deck acts on itself (only ones MSFS leaves unbound), and which held buttons light which keys.
+  stick: {
+    enabled: true,
+    device: '046d:c215', // Logitech Extreme 3D Pro
+    buttons: { 11: 'AP_DISC' },
+    echo: { trim: [4, 6], flapsUp: [7], flapsDown: [9], parkBrake: [10] },
+  },
   forza: { port: 5300, listen: '0.0.0.0', units: 'mph', keys: { rewind: 'BACKSPACE', horn: 'H', pause: 'ESC' } },
 };
+const AP_DISC_SHOW_MS = 3000;
 function merge(base, over) {
   const out = Array.isArray(base) ? base.slice() : { ...base };
   for (const k of Object.keys(over || {})) {
@@ -60,13 +71,35 @@ function saveCfg() {
   try { fs.writeFileSync(CFG_FILE + '.tmp', JSON.stringify(cfg, null, 2)); fs.renameSync(CFG_FILE + '.tmp', CFG_FILE); } catch (e) { log('save cfg', e.message); }
 }
 loadCfg();
-fs.watchFile(CFG_FILE, { interval: 2000 }, () => { loadCfg(); forza.start(cfg.forza.port, cfg.forza.listen); dirtyAll(); log('config reloaded'); });
+fs.watchFile(CFG_FILE, { interval: 2000 }, () => { loadCfg(); forza.start(cfg.forza.port, cfg.forza.listen); if (!OFFLINE) startStick(); updateMode(); dirtyAll(); log('config reloaded'); });
 
 // ---------------------------------------------------------------- game links
 
 const msfs = new Msfs(log);
 const forza = new Forza(log);
+const stick = new Stick(log);
 const pages = { msfs: 0 };
+const knob = { focus: 0 };
+let apDiscAt = 0;
+let mode = 'generic'; // MSFS page set: 'generic' | 'skyhawk'
+const TITLE = msfs.watch('TITLE', null);
+const ATC_MODEL = msfs.watch('ATC MODEL', null);
+let lastTitle = null;
+
+function updateMode() {
+  const want = cfg.msfs.aircraft === 'skyhawk' ? 'skyhawk'
+    : cfg.msfs.aircraft === 'generic' ? 'generic'
+      : (isSkyhawk(msfs.get(TITLE), msfs.get(ATC_MODEL)) ? 'skyhawk' : 'generic');
+  if (want !== mode) {
+    mode = want; pages.msfs = 0; knob.focus = 0;
+    log('msfs pages:', mode, '(title', JSON.stringify(msfs.get(TITLE)), 'model', JSON.stringify(msfs.get(ATC_MODEL)) + ', setting ' + cfg.msfs.aircraft + ')');
+    dirtyGame('msfs');
+  }
+}
+
+function startStick() {
+  if (cfg.stick.enabled) stick.start(cfg.stick.device); else stick.stop();
+}
 
 // ---------------------------------------------------------------- Stream Deck socket
 
@@ -81,7 +114,7 @@ const devices = new Map();  // device id -> { type, cols }
 let dirty = new Set();
 
 function slotDef(k) {
-  return k.game === 'forza' ? forzaSlot(k.slot) : msfsSlot(k.slot, pages.msfs);
+  return k.game === 'forza' ? forzaSlot(k.slot) : msfsSlot(k.slot, pages.msfs, mode);
 }
 
 // Everything a key definition may use.
@@ -89,9 +122,15 @@ function scope(k) {
   return {
     cfg,
     v: (name, unit) => msfs.get(msfs.watch(name, unit)),
-    send: (ev) => { if (!msfs.send(ev)) throw new Error('sim not connected'); },
+    send: (ev, data = 0) => { if (!msfs.send(ev, data)) throw new Error('sim not connected'); },
+    input: (name) => msfs.input(name),
+    setInput: (name, value) => { if (!msfs.setInput(name, value)) throw new Error('cannot set ' + name); },
     paused: () => msfs.paused,
     connected: () => msfs.connected,
+    stick: () => stick,
+    knob: () => knob.focus,
+    setKnob: (i) => { knob.focus = i; dirtyGame('msfs'); },
+    apDisc: () => Date.now() - apDiscAt < AP_DISC_SHOW_MS,
     setPage: (i) => { pages.msfs = i; dirtyGame('msfs'); },
     forza: () => (forza.live() ? forza.last : null),
     peak: () => forza.peakSpeed,
@@ -109,7 +148,10 @@ function draw(ctx) {
   let image;
   try {
     const spec = def ? def.draw(scope(k)) : { style: 'button', caption: '', glyph: '', label: '' };
-    image = renderKey({ ...spec, pressed: k.pressed });
+    const holdMs = def && def.hold ? def.hold.ms : 0;
+    const progress = holdMs && k.holdStart && !k.holdDone ? (Date.now() - k.holdStart) / holdMs : 0;
+    const hint = k.hintUntil > Date.now() ? 'HOLD ' + (holdMs / 1000) + ' S' : undefined;
+    image = renderKey({ ...spec, pressed: k.pressed, progress, hint });
   } catch (e) {
     log('draw failed', k.game, k.slot, e.stack);
     return;
@@ -131,12 +173,13 @@ setInterval(() => {
   for (const c of list) draw(c);
 }, FRAME_MS);
 
-function fire(ctx) {
+function fire(ctx, which = 'press') {
   const k = keysOn.get(ctx);
-  const def = k && slotDef(k);
-  if (!def || !def.press) return true;
+  const def = k && (k.def || slotDef(k));
+  const fn = def && (which === 'hold' ? def.hold && def.hold.fn : def[which]);
+  if (!fn) return true;
   try {
-    const r = def.press(scope(k));
+    const r = fn(scope(k));
     if (r && typeof r.then === 'function') r.catch((e) => { log('press failed', e.message); send({ event: 'showAlert', context: ctx }); });
     return true;
   } catch (e) {
@@ -146,21 +189,48 @@ function fire(ctx) {
   }
 }
 
+// Keys may define: press (on down), repeat (press again while held), release (on up),
+// hold {ms, fn} (fires once held that long, with a progress ring), tap (on up if the hold didn't fire).
 function keyDown(ctx) {
   const k = keysOn.get(ctx);
   if (!k) return;
-  k.pressed = true; k.downAt = Date.now(); dirty.add(ctx);
+  k.pressed = true; k.downAt = Date.now(); k.hintUntil = 0; dirty.add(ctx);
+  k.def = slotDef(k); // the page may change while held; finish with the key that was pressed
+  const def = k.def;
   const ok = fire(ctx);
-  const def = slotDef(k);
   if (ok && def && def.repeat) {
     k.repeat = setTimeout(function tick() { fire(ctx); k.repeat = setTimeout(tick, REPEAT_EVERY); }, REPEAT_DELAY);
   }
+  if (def && def.hold) {
+    k.holdStart = Date.now(); k.holdDone = false;
+    k.holdAnim = setInterval(() => dirty.add(ctx), FRAME_MS);
+    k.holdTimer = setTimeout(() => {
+      clearInterval(k.holdAnim);
+      k.holdDone = true; dirty.add(ctx);
+      fire(ctx, 'hold');
+    }, def.hold.ms);
+  }
+}
+
+function endHold(k) {
+  clearTimeout(k.holdTimer); clearInterval(k.holdAnim);
+  k.holdTimer = k.holdAnim = null; k.holdStart = 0;
 }
 
 function keyUp(ctx) {
   const k = keysOn.get(ctx);
   if (!k) return;
   clearTimeout(k.repeat); k.repeat = null;
+  const def = k.def;
+  if (def && def.hold) {
+    const held = k.holdDone;
+    endHold(k);
+    if (!held) {
+      if (def.tap) fire(ctx, 'tap');
+      else { k.hintUntil = Date.now() + 1200; setTimeout(() => dirty.add(ctx), 1250); }
+    }
+  }
+  if (def && def.release) fire(ctx, 'release');
   const wait = Math.max(0, 120 - (Date.now() - (k.downAt || 0)));
   setTimeout(() => { k.pressed = false; dirty.add(ctx); }, wait);
 }
@@ -225,7 +295,10 @@ ws.on('message', (raw) => {
     }
     case 'willDisappear': {
       const k = keysOn.get(ctx);
-      if (k) clearTimeout(k.repeat);
+      if (k) {
+        clearTimeout(k.repeat); endHold(k);
+        if (k.cranking) { k.cranking = false; msfs.setInput('ENGINE_MAGNETO_1', 3); } // never leave the starter engaged
+      }
       keysOn.delete(ctx);
       break;
     }
@@ -243,21 +316,56 @@ ws.on('error', (e) => log('ws error', e.message));
 
 // ---------------------------------------------------------------- live data -> redraw
 
-msfs.on('change', () => dirtyGame('msfs'));
+msfs.on('change', () => {
+  const t = msfs.get(TITLE);
+  if (t && lastTitle && t !== lastTitle) { log('aircraft changed:', t); msfs.refreshInputs(); }
+  if (t) lastTitle = t;
+  updateMode();
+  dirtyGame('msfs');
+});
 msfs.on('pause', () => dirtyGame('msfs'));
-msfs.on('status', () => dirtyGame('msfs'));
+msfs.on('status', (up) => { if (!up) lastTitle = null; updateMode(); dirtyGame('msfs'); });
 forza.on('data', () => dirtyGame('forza'));
 forza.on('status', () => dirtyGame('forza'));
-msfs.start();
+
+// Stick: echo held buttons on the deck, and handle the few buttons MSFS leaves unbound.
+stick.on('status', () => dirtyGame('msfs'));
+stick.on('axes', () => dirtyGame('msfs'));
+stick.on('button', (n, down) => {
+  dirtyGame('msfs');
+  if (!down || !cfg.stick.enabled || !msfs.connected) return;
+  const action = cfg.stick.buttons[n];
+  if (!action) return;
+  if (action === 'AP_DISC') {
+    const wasOn = msfs.get(msfs.watch('AUTOPILOT MASTER', 'Bool'));
+    msfs.send('AUTOPILOT_OFF');
+    if (wasOn) { apDiscAt = Date.now(); setTimeout(() => dirtyGame('msfs'), AP_DISC_SHOW_MS + 50); }
+    log('stick button', n, 'AP disconnect', wasOn ? '(was engaged)' : '(was off)');
+  } else {
+    msfs.send(String(action));
+    log('stick button', n, '->', action);
+  }
+});
+
+// COCKPITDECK_OFFLINE=1 (tests): never touch a running sim or the real stick.
+const OFFLINE = process.env.COCKPITDECK_OFFLINE === '1';
+updateMode(); // apply a forced "skyhawk"/"generic" setting before any sim data arrives
+if (OFFLINE) log('offline mode: no sim, no stick');
+else { msfs.start(); startStick(); }
 forza.start(cfg.forza.port, cfg.forza.listen);
 
 // ---------------------------------------------------------------- auto profile switching
 
 const running = { msfs: false, forza: false };
 const switchedIn = new Set(); // device ids we moved onto a game profile; only those get switched back
+let lastTasklistLog = 0;
 function pollGames() {
   execFile('tasklist.exe', ['/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 10000, maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
-    if (err) { log('tasklist', err.message); return; }
+    if (err) {
+      // tasklist fails now and then while the PC is busy (e.g. MSFS loading); that poll is simply skipped.
+      if (Date.now() - lastTasklistLog > 60000) { lastTasklistLog = Date.now(); log('tasklist failed (skipping this check):', err.message.split('\n')[0]); }
+      return;
+    }
     const names = new Set(out.split(/\r?\n/).map((l) => (l.match(/^"([^"]+)"/) || [])[1]).filter(Boolean).map((s) => s.toLowerCase()));
     for (const g of Object.keys(GAME_EXE)) {
       const now = names.has(GAME_EXE[g]);
