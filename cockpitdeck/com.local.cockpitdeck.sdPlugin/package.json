@@ -1,0 +1,1 @@
+{"name":"cockpitdeck","version":"1.0.3","private":true,"license":"GPL-3.0-only","dependencies":{"@resvg/resvg-js":"^2.6.2","koffi":"^3.3.8","node-simconnect":"^4.2.1","ws":"^8.23.0"}}

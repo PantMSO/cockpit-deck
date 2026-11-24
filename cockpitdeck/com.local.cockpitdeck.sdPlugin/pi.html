@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; padding: 12px 14px; background: #2d2d2d; color: #d8d8d8; font: 13px "Segoe UI", sans-serif; }
+  label { display: block; margin-bottom: 6px; color: #9a9a9a; font-size: 12px; }
+  select { width: 100%; padding: 5px 6px; background: #3d3d3d; color: #eee; border: 1px solid #555; border-radius: 3px; font: inherit; }
+  p { color: #9a9a9a; font-size: 12px; line-height: 1.45; margin: 12px 0 0; }
+</style>
+</head>
+<body>
+  <label for="game">Game</label>
+  <select id="game">
+    <option value="msfs">Microsoft Flight Simulator 2024</option>
+    <option value="forza">Forza Horizon 6</option>
+  </select>
+  <p>What this key shows comes from where it sits on the deck (top-left is key 1). Use the bundled Cockpit Deck profiles for the full layouts.</p>
+<script>
+  let socket, uuid;
+  function connectElgatoStreamDeckSocket(port, inUUID, registerEvent, info, actionInfo) {
+    uuid = inUUID;
+    const settings = (JSON.parse(actionInfo).payload || {}).settings || {};
+    const sel = document.getElementById('game');
+    sel.value = settings.game || 'msfs';
+    socket = new WebSocket('ws://127.0.0.1:' + port);
+    socket.onopen = () => socket.send(JSON.stringify({ event: registerEvent, uuid }));
+    sel.onchange = () => socket.send(JSON.stringify({ event: 'setSettings', context: uuid, payload: { game: sel.value } }));
+  }
+</script>
+</body>
+</html>

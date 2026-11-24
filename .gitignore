@@ -1,0 +1,9 @@
+# libraries: restore with `npm ci`
+node_modules/
+
+# build output: recreate with tools/build.ps1
+cockpitdeck/build/
+cockpitdeck/dist/
+
+# debug builds only
+debug.flag

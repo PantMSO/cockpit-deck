@@ -1,0 +1,31 @@
+{
+  "Name": "Cockpit Deck",
+  "Version": "1.0.3.0",
+  "Author": "Local",
+  "Description": "Live cockpit keys for Microsoft Flight Simulator 2024 (SimConnect) and a telemetry dash for Forza Horizon 6.",
+  "Icon": "imgs/plugin",
+  "Category": "Cockpit Deck",
+  "CategoryIcon": "imgs/category",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 2,
+  "UUID": "com.local.cockpitdeck",
+  "Software": { "MinimumVersion": "6.5" },
+  "OS": [{ "Platform": "windows", "MinimumVersion": "10" }],
+  "Nodejs": { "Version": "20", "Debug": "disabled" },
+  "Profiles": [
+    { "Name": "CockpitDeck-MSFS2024", "DeviceType": 0, "Readonly": false, "DontAutoSwitchWhenInstalled": true },
+    { "Name": "CockpitDeck-Forza", "DeviceType": 0, "Readonly": false, "DontAutoSwitchWhenInstalled": true }
+  ],
+  "Actions": [
+    {
+      "Name": "Cockpit key",
+      "UUID": "com.local.cockpitdeck.slot",
+      "Icon": "imgs/action",
+      "Tooltip": "A live cockpit key. What it shows depends on its position and chosen game.",
+      "PropertyInspectorPath": "pi.html",
+      "SupportedInMultiActions": false,
+      "Controllers": ["Keypad"],
+      "States": [{ "Image": "imgs/key", "ShowTitle": false }]
+    }
+  ]
+}
