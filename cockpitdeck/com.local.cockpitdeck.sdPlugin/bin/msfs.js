@@ -34,6 +34,8 @@ class Msfs extends EventEmitter {
     this.inputReq = new Map();  // getInputEvent request id -> name
     this.nextInputReq = INPUT_REQ_BASE;
     this.inputsReady = false;
+    this.inputsVersion = 0;     // bumped whenever the input event list changes
+    this.lastTitle = null;      // aircraft title last seen, see noteTitle()
     this._enumList = [];
   }
 
@@ -68,6 +70,9 @@ class Msfs extends EventEmitter {
     return e ? e.value : null;
   }
 
+  /** Names of the loaded aircraft's input events (empty until they have been listed). */
+  inputNames() { return this.inputsReady ? [...this.inputs.keys()] : []; }
+
   /** True when the loaded aircraft has this input event. */
   hasInput(name) { return this.inputs.has(name); }
 
@@ -92,9 +97,25 @@ class Msfs extends EventEmitter {
     this.inputByHash.clear();
     this.inputReq.clear();
     this.inputsReady = false;
+    this.inputsVersion++;
     this._enumList = [];
     try { this.handle.enumerateInputEvents(ENUM_REQ); } catch (e) { this.log('msfs enumerateInputEvents failed', e.message); }
-    this.emit('change');
+    // Announced on the next tick, never from inside a 'change' listener: a listener that refreshes on change
+    // would otherwise call itself (this looped thousands of times a second in 1.2.0-1.2.2).
+    setImmediate(() => this.emit('change'));
+  }
+
+  /**
+   * Tell the link the current aircraft title. When it differs from the last one, the aircraft's input events are
+   * listed again, once. Returns true when the aircraft changed.
+   */
+  noteTitle(title) {
+    if (!title) return false;
+    const prev = this.lastTitle;
+    this.lastTitle = title; // recorded before refreshing, so a change is only ever handled once
+    if (!prev || prev === title) return false;
+    this.refreshInputs();
+    return true;
   }
 
   _watchInput(name, e) {
@@ -176,6 +197,7 @@ class Msfs extends EventEmitter {
       }
       this._enumList = [];
       this.inputsReady = true;
+      this.inputsVersion++;
       this.log('msfs input events:', this.inputs.size);
       for (const name of this.inputWanted) { const e = this.inputs.get(name); if (e) this._watchInput(name, e); }
       this.emit('change');
@@ -201,7 +223,8 @@ class Msfs extends EventEmitter {
       this.handle = null;
       this.paused = null;
       for (const v of this.vars.values()) v.value = null;
-      this.inputs.clear(); this.inputByHash.clear(); this.inputReq.clear(); this.inputsReady = false;
+      this.inputs.clear(); this.inputByHash.clear(); this.inputReq.clear(); this.inputsReady = false; this.inputsVersion++;
+      this.lastTitle = null;
       this.log('msfs disconnected:', why);
       this.emit('status', false);
       if (!this.stopped) this.retry = setTimeout(() => this._tryConnect(), RETRY_MS);

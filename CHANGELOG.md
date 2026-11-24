@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.2.3 (2026-11-24)
+
+**Fixed**
+- Switching aircraft could make the plugin loop: handling the change asked MSFS for the new aircraft's input
+  events, which announced a change before the new aircraft had been recorded, so the same change was handled again,
+  thousands of times a second, flooding the sim with requests until the plugin crashed and restarted. It came up when
+  switching to the DG-1001 glider with 1.2.2. The aircraft title is now recorded before anything else happens, the
+  input event list is requested once per switch, and a new automated check covers it (78 in total).
+
+## 1.2.2 (2026-11-24)
+
+**Trim from the deck.** Every FLY page (C172, piston, turboprop, jet, glider) now has **TRIM ▲** above **TRIM ▼** in
+the left column. Each shows the trim gauge; tap to nudge, hold to keep trimming (`ELEV_TRIM_UP` / `ELEV_TRIM_DN`;
+checked live that UP is nose up). ▲ lights while stick button 4 is held and ▼ while 6 is held: the stick echo setting
+`trim` is replaced by `trimUp` / `trimDown`. To make room, PAUSE left those FLY pages, and the jet page dropped ALTITUDE.
+
+## 1.2.1 (2026-11-24)
+
+**Added**
+- **Pages for every aircraft.** The deck works out what kind of aircraft is loaded, in free flight or a mission, and
+  switches to pages built for it: **piston, turboprop, jet, helicopter, glider**, the Cessna 172 pages, or the
+  standard pages for anything else (balloons, airships, eVTOLs). Detection uses the aircraft's SimVars, so add-ons work too.
+  - Every kind has FLY · ENGINE · AUTOPILOT · RADIO · LIGHTS. Gliders have a SOAR page (vario, wind, tow, ballast) in place of AUTOPILOT.
+  - Pages adapt within a kind: the gear key only on retractable aircraft, engines 1 and 2 stacked on twins, a magneto key per piston engine, L/R tanks where the aircraft has them.
+  - Jets: elevator trim (lights while the stick's trim buttons are held), speedbrake (tap) and arm (hold), A/THR, APU start/stop (hold 1 s), FLC, and a SPD target on the AP knob.
+  - Helicopters: rotor %, torque, height above ground, rotor brake, N1/N2 and TOT.
+- `msfs.aircraft` accepts `piston`, `turboprop`, `jet`, `heli` and `glider` as well as `auto`, `skyhawk` and `generic`.
+- `tools/switchcheck.js`: presses an aircraft's switch keys for real on the ground, checks each one, and puts it back.
+- `tools/livecheck.js` now checks whichever aircraft is loaded.
+- 29 new automated checks (77 in total).
+
+**Changed**
+- The log names the aircraft's kind, category and engine type when the page set changes.
+
 ## 1.1.1 (2026-11-24)
 
 First public release of the Skyhawk + stick work (1.1.0 was an internal build).

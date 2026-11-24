@@ -43,7 +43,18 @@ const fakeVars = {
   'GENERAL ENG EXHAUST GAS TEMPERATURE:1': 1334, 'ENG CYLINDER HEAD TEMPERATURE:1': 372.5,
   'ELECTRICAL BUS VOLTAGE:1': 28, 'ELECTRICAL BATTERY VOLTAGE': 25.1,
   'AUTOPILOT FLIGHT DIRECTOR ACTIVE': 1, 'NAV OBS:1': 123, 'KOHLSMAN SETTING HG:1': 29.92,
+  // other aircraft kinds (engine 2 reads the same as engine 1 unless set here)
+  'ELECTRICAL MAIN BUS VOLTAGE': 28.1, 'RECIP ENG LEFT MAGNETO:1': 1, 'RECIP ENG RIGHT MAGNETO:1': 1,
+  'GENERAL ENG PROPELLER LEVER POSITION:1': 100, 'PROP RPM:1': 1900, 'ENG TORQUE PERCENT:1': 61.4, 'TURB ENG ITT:1': 702,
+  'TURB ENG N1:1': 92.3, 'TURB ENG N2:1': 96.8, 'ENG EXHAUST GAS TEMPERATURE:1': 611, 'FUEL TOTAL QUANTITY WEIGHT': 4832,
+  'SPOILERS HANDLE POSITION': 0, 'AUTOPILOT THROTTLE ARM': 1, 'APU PCT RPM': 0, 'AUTOPILOT FLIGHT LEVEL CHANGE': 0, 'AUTOPILOT AIRSPEED HOLD VAR': 250,
+  'ROTOR RPM PCT:1': 100.2, 'PLANE ALT ABOVE GROUND': 812, 'ROTOR BRAKE ACTIVE': 0,
+  'VARIOMETER RATE': 3.4, 'AMBIENT WIND DIRECTION': 245, 'AMBIENT WIND VELOCITY': 12.4, 'GROUND VELOCITY': 58.2, 'G FORCE': 1.3,
+  'WATER BALLAST VALVE': 0, 'TOTAL WEIGHT': 1268,
 };
+// engine 2 mirrors engine 1 in the sample data
+for (const k of Object.keys(fakeVars)) if (k.endsWith(':1') && !(k.slice(0, -1) + '2' in fakeVars)) fakeVars[k.slice(0, -1) + '2'] = fakeVars[k];
+Object.assign(fakeVars, { 'GENERAL ENG RPM:2': 2391, 'TURB ENG N1:2': 92.1, 'RECIP ENG LEFT MAGNETO:2': 0, 'RECIP ENG RIGHT MAGNETO:2': 1 });
 
 /** Aircraft input events as the C172SP G1000 reports them. */
 const fakeInputs = {
@@ -55,7 +66,7 @@ const fakeInputs = {
 
 const cfg = {
   forza: { units: 'mph', keys: { rewind: 'BACKSPACE', horn: 'H', pause: 'ESC' } },
-  stick: { enabled: true, device: '046d:c215', buttons: { 11: 'AP_DISC' }, echo: { trim: [4, 6], flapsUp: [7], flapsDown: [9], parkBrake: [10] } },
+  stick: { enabled: true, device: '046d:c215', buttons: { 11: 'AP_DISC' }, echo: { trimUp: [4], trimDown: [6], flapsUp: [7], flapsDown: [9], parkBrake: [10] } },
 };
 
 /** A stick at rest-ish with optional held buttons. */

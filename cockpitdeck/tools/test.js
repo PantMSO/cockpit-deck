@@ -12,7 +12,8 @@ const { msfsSlot, forzaSlot, isSkyhawk, KNOB } = require(path.join(PLUGIN, 'bin'
 const { svgFor } = require(path.join(PLUGIN, 'bin', 'render.js'));
 const { parseDevice } = require(path.join(PLUGIN, 'bin', 'stick.js'));
 const { sheet } = require('./preview.js');
-const { forzaPacket, scopeFor, fakeStick } = require('./fixtures.js');
+const { forzaPacket, scopeFor, fakeStick, fakeInputs } = require('./fixtures.js');
+const { classify, pagesFor } = require(path.join(PLUGIN, 'bin', 'aircraft.js'));
 const WebSocket = require(path.join(PLUGIN, 'node_modules', 'ws'));
 
 const [outDir, sdNode] = process.argv.slice(2);
@@ -138,7 +139,8 @@ check('skyhawk AP knob: tap cycles target, -/+ follow it', () => {
 });
 check('skyhawk stick echo + AP disconnect show on keys', () => {
   const held = scopeFor(true, null, {}, { stick: fakeStick(true, [6, 9, 10]) });
-  assert.ok(sky(0, 0).draw(held).ring, 'trim lit while stick 6 held');
+  assert.ok(sky(0, 5).draw(held).ring, 'trim down lit while stick 6 held');
+  assert.ok(!sky(0, 0).draw(held).ring, 'trim up not lit');
   assert.ok(!sky(0, 1).draw(held).ring, 'flaps up not lit');
   assert.ok(sky(0, 2).draw(held).ring, 'flaps down lit while stick 9 held');
   assert.ok(sky(0, 3).draw(held).ring, 'park brake lit while stick 10 held');
@@ -153,6 +155,149 @@ check('skyhawk hold-only keys have no instant action', () => {
   const s = scopeFor(true); a.hold.fn(s); assert.deepStrictEqual(s.calls.pop(), ['send', 'ENGINE_AUTO_SHUTDOWN', undefined]);
   const o = scopeFor(true, null, { 'ENG COMBUSTION:1': 0 }); a.hold.fn(o); assert.deepStrictEqual(o.calls.pop(), ['send', 'ENGINE_AUTO_START', undefined]);
 });
+// ---------- 2c. Every aircraft kind: detection, pages, renders, behaviour
+check('aircraft kind detection', () => {
+  const c = (category, engineType, title = 'X') => classify({ title, model: '', category, engineType });
+  assert.strictEqual(c('Airplane', 0, 'C172SP G1000 Passengers'), 'skyhawk');
+  assert.strictEqual(c('Airplane', 0), 'piston');
+  assert.strictEqual(c('Airplane', 5), 'turboprop');
+  assert.strictEqual(c('Airplane', 1, 'Cessna Citation CJ4'), 'jet');
+  assert.strictEqual(c('Airplane', 1, 'A10C Thunderbolt II'), 'jet');
+  assert.strictEqual(c('Helicopter', 3), 'heli');
+  assert.strictEqual(c('Helicopter', 0), 'heli', 'piston helicopter');
+  assert.strictEqual(c('Glider', 2), 'glider');
+  assert.strictEqual(c('Glider', 0), 'glider', 'motor glider');
+  assert.strictEqual(c('Airplane', 2), 'generic', 'no engine (balloon/airship)');
+  assert.strictEqual(c(null, null), 'generic', 'nothing known yet');
+});
+const KINDS_UNDER_TEST = [['piston', 0], ['turboprop', 5], ['jet', 1], ['heli', 3], ['glider', 2]];
+for (const [cls, engineType] of KINDS_UNDER_TEST) {
+  for (const engines of [1, 2]) {
+    for (const retract of [false, true]) {
+      check(`pages ${cls} ${engines} eng ${retract ? 'retractable' : 'fixed'} gear: 5 tabs x 10 keys, all draw`, () => {
+        const set = pagesFor({ cls, engines, retract, engineType, inputs: Object.keys(fakeInputs) });
+        assert.strictEqual(set.tabs.length, 5);
+        for (let p = 0; p < 5; p++) {
+          for (const connected of [true, false]) {
+            const s = scopeFor(connected, null, {}, { stick: fakeStick(connected, [4]) });
+            const specs = [...Array(15).keys()].map((i) => { const d = msfsSlot(i, p, set); assert.ok(d, `page ${p} slot ${i}`); return d.draw(s); });
+            specs.forEach((sp) => svgFor(sp));
+            if (engines === 2 && retract && connected) fs.writeFileSync(path.join(outDir, `kind-${cls}-${p}.png`), sheet(specs));
+          }
+        }
+      });
+    }
+  }
+}
+check('pages: Cessna 172 and the rest keep their own sets', () => {
+  assert.strictEqual(pagesFor({ cls: 'skyhawk' }), 'skyhawk');
+  assert.strictEqual(pagesFor({ cls: 'generic' }), 'generic');
+  assert.strictEqual(pagesFor({ cls: 'jet', engines: 2, inputs: [] }), pagesFor({ cls: 'jet', engines: 2, inputs: [] }), 'built once, then cached');
+});
+const kindSet = (cls, extra = {}) => pagesFor({ cls, engines: 1, retract: false, engineType: 0, inputs: Object.keys(fakeInputs), ...extra });
+check('fixed gear shows a readout instead of the gear key', () => {
+  assert.strictEqual(msfsSlot(3, 0, kindSet('piston')).draw(scopeFor(true)).caption, 'IAS');
+  assert.strictEqual(msfsSlot(3, 0, kindSet('piston', { retract: true })).draw(scopeFor(true)).style, 'gear');
+});
+check('switches use classic events unless an aircraft override says otherwise', () => {
+  const s = scopeFor(true);
+  const set = kindSet('piston');
+  for (let i = 0; i < 4; i++) msfsSlot(i, 1, set).press(s);
+  assert.deepStrictEqual(s.calls.map((c) => c[1]), ['TOGGLE_MASTER_BATTERY', 'TOGGLE_MASTER_ALTERNATOR', 'TOGGLE_AVIONICS_MASTER', 'TOGGLE_ELECT_FUEL_PUMP']);
+  const lights = kindSet('turboprop', { engineType: 5 }).pages[4];
+  const l = scopeFor(true); lights.slice(0, 9).forEach((k) => k.press(l));
+  assert.deepStrictEqual(l.calls.map((c) => c[1]), ['TOGGLE_BEACON_LIGHTS', 'TOGGLE_NAV_LIGHTS', 'STROBES_TOGGLE', 'TOGGLE_TAXI_LIGHTS', 'LANDING_LIGHTS_TOGGLE',
+    'PANEL_LIGHTS_TOGGLE', 'TOGGLE_CABIN_LIGHTS', 'PITOT_HEAT_TOGGLE', 'TOGGLE_STRUCTURAL_DEICE']);
+});
+check('magnetos: the aircraft input when it has one, classic events otherwise', () => {
+  const withInput = msfsSlot(4, 1, kindSet('piston'));
+  const s = scopeFor(true, null, {}, { inputs: { ENGINE_MAGNETO_1: 0 } });
+  withInput.tap(s); assert.deepStrictEqual(s.calls.pop(), ['input', 'ENGINE_MAGNETO_1', 1]);
+  const classic = msfsSlot(4, 1, kindSet('piston', { inputs: [] }));
+  const off = scopeFor(true, null, { 'RECIP ENG LEFT MAGNETO:1': 0, 'RECIP ENG RIGHT MAGNETO:1': 0 });
+  assert.strictEqual(classic.draw(off).pos, 0);
+  classic.tap(off); assert.deepStrictEqual(off.calls.pop(), ['send', 'MAGNETO1_RIGHT', undefined]);
+  classic.hold.fn(off); assert.deepStrictEqual(off.calls.pop(), ['send', 'MAGNETO1_OFF', undefined]);
+  const both = scopeFor(true);
+  assert.strictEqual(classic.draw(both).pos, 3); classic.tap(both); assert.strictEqual(both.calls.length, 0, 'stops at BOTH');
+  const twin = kindSet('piston', { engines: 2, inputs: [] });
+  assert.strictEqual(msfsSlot(5, 1, twin).draw(scopeFor(true)).title, 'MAGS ENG 2');
+  assert.strictEqual(msfsSlot(5, 1, twin).draw(scopeFor(true)).pos, 1, 'engine 2 on R only');
+});
+check('jet: knob starts on SPD, speedbrake taps and arms on hold, twin readouts', () => {
+  const set = kindSet('jet', { engines: 2, retract: true, engineType: 1 });
+  const s = scopeFor(true);
+  assert.strictEqual(msfsSlot(7, 2, set).draw(s).caption, 'KNOB: SPD');
+  msfsSlot(9, 2, set).press(s); assert.deepStrictEqual(s.calls.pop(), ['send', 'AP_SPD_VAR_INC', undefined]);
+  const sb = msfsSlot(4, 0, set);
+  sb.tap(s); assert.deepStrictEqual(s.calls.pop(), ['send', 'SPOILERS_TOGGLE', undefined]);
+  sb.hold.fn(s); assert.deepStrictEqual(s.calls.pop(), ['send', 'SPOILERS_ARM_TOGGLE', undefined]);
+  assert.strictEqual(msfsSlot(0, 0, set).draw(s).dir, 'up', 'jets: trim up'); assert.strictEqual(msfsSlot(5, 0, set).draw(s).dir, 'down', 'jets: trim down');
+  const n1 = msfsSlot(2, 0, set).draw(s);
+  assert.strictEqual(n1.style, 'dual'); assert.deepStrictEqual(n1.rows.map((r) => r.value), ['92.3', '92.1']);
+  const apu = msfsSlot(2, 1, set);
+  assert.ok(apu.hold && !apu.press && !apu.tap, 'APU only on a 1 s hold');
+  apu.hold.fn(s); assert.deepStrictEqual(s.calls.pop(), ['send', 'APU_STARTER', undefined]);
+});
+check('glider: airbrakes, vario, tow keys', () => {
+  const set = kindSet('glider', { engineType: 2 });
+  const s = scopeFor(true);
+  assert.strictEqual(set.tabs[1].label, 'SOAR');
+  msfsSlot(4, 0, set).press(s); assert.deepStrictEqual(s.calls.pop(), ['send', 'SPOILERS_TOGGLE', undefined]);
+  assert.strictEqual(msfsSlot(7, 0, set).draw(s).value, '+3.4');
+  msfsSlot(7, 1, set).press(s); msfsSlot(6, 1, set).press(s);
+  assert.deepStrictEqual(s.calls.splice(-2).map((c) => c[1]), ['TOW_PLANE_RELEASE', 'TOW_PLANE_REQUEST']);
+});
+check('aircraft override: input events with their own on/off values', () => {
+  const { group } = require(path.join(PLUGIN, 'bin', 'aircraft.js'))._test;
+  const k = group('MASTER', 'GEN', ['G1', 'G2'], null, { on: 0, off: 2 });
+  const s = scopeFor(true, null, {}, { inputs: { G1: 0, G2: 0 } });
+  assert.strictEqual(k.draw(s).state, true, '0 means on here');
+  k.press(s); assert.deepStrictEqual(s.calls, [['input', 'G1', 2], ['input', 'G2', 2]]);
+  assert.strictEqual(k.draw(s).state, false);
+  const half = scopeFor(true, null, {}, { inputs: { G1: 0, G2: 2 } });
+  assert.strictEqual(k.draw(half).offText, '1 OF 2 ON');
+});
+
+check('trim keys on every FLY page: up above down, nudge on tap, repeat while held, echo their stick button', () => {
+  const sets = [['skyhawk', 'skyhawk'], ...['piston', 'turboprop', 'jet', 'glider'].map((k) => [k, kindSet(k)])];
+  for (const [name, set] of sets) {
+    const up = msfsSlot(0, 0, set), dn = msfsSlot(5, 0, set);
+    const s = scopeFor(true);
+    assert.strictEqual(up.draw(s).style, 'trim', name); assert.strictEqual(up.draw(s).dir, 'up', name); assert.strictEqual(dn.draw(s).dir, 'down', name);
+    up.press(s); dn.press(s);
+    assert.deepStrictEqual(s.calls.map((x) => x[1]), ['ELEV_TRIM_UP', 'ELEV_TRIM_DN'], name);
+    assert.ok(up.repeat && dn.repeat, name + ' hold to keep trimming');
+    const held4 = scopeFor(true, null, {}, { stick: fakeStick(true, [4]) });
+    assert.ok(up.draw(held4).ring && !dn.draw(held4).ring, name + ' button 4 lights trim up only');
+    assert.strictEqual(up.draw(s).note, 'BTN 4'); assert.strictEqual(dn.draw(s).note, 'BTN 6');
+  }
+  assert.ok(svgFor({ style: 'trim', dir: 'up', pct: 0.1, note: 'BTN 4' }).includes('TRIM'));
+});
+
+// Regression (1.2.0-1.2.2): switching aircraft re-listed input events from inside the 'change' listener, which
+// fired 'change' again before the new title was recorded, looping thousands of times a second.
+async function aircraftSwitchCheck() {
+  const { Msfs } = require(path.join(PLUGIN, 'bin', 'msfs.js'));
+  const m = new Msfs(() => {});
+  let enumerations = 0;
+  m.connected = true;
+  m.handle = { enumerateInputEvents: () => { enumerations++; } };
+  let title = 'Cessna Citation CJ4', changes = 0;
+  // the same listener plugin.js uses
+  m.on('change', () => { changes++; if (changes > 50) throw new Error('change storm'); m.noteTitle(title); });
+  m.noteTitle(title);
+  title = 'DG-1001-E Neo';
+  m.emit('change');
+  await new Promise((r) => setTimeout(r, 50));
+  check('switching aircraft lists input events once, no loop', () => {
+    assert.strictEqual(enumerations, 1, 'enumerations ' + enumerations);
+    assert.ok(changes <= 3, 'change events ' + changes);
+    assert.strictEqual(m.lastTitle, 'DG-1001-E Neo');
+    assert.strictEqual(m.noteTitle('DG-1001-E Neo'), false, 'same aircraft again is not a change');
+  });
+}
+
 check('hold ring + hint overlays render', () => {
   const svg = svgFor({ style: 'toggle', caption: 'X', label: 'Y', state: false, progress: 0.5, hint: 'HOLD 1 S' });
   assert.ok(svg.includes('stroke-dasharray') && svg.includes('HOLD 1 S') && svg.trim().endsWith('</svg>'));
@@ -251,4 +396,4 @@ async function e2e() {
   console.log('--- plugin log tail\n' + logTail);
 }
 
-e2e().then(() => { console.log(failures ? `${failures} FAILED` : 'ALL PASSED'); process.exit(failures ? 1 : 0); }, (e) => { console.log('E2E ERROR', e.message); process.exit(1); });
+aircraftSwitchCheck().then(e2e).then(() => { console.log(failures ? `${failures} FAILED` : 'ALL PASSED'); process.exit(failures ? 1 : 0); }, (e) => { console.log('E2E ERROR', e.message); process.exit(1); });

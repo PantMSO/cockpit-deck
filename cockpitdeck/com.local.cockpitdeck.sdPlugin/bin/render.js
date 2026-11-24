@@ -167,7 +167,13 @@ function trim(k) {
     const ty = top + (i * (bot - top)) / 8;
     ticks += `<line x1="${i % 4 === 0 ? 30 : 36}" y1="${ty}" x2="48" y2="${ty}" stroke="${i === 4 ? C.dim : C.faint}" stroke-width="${i === 4 ? 3 : 2}"/>`;
   }
-  const inner = caption('ELEV TRIM') +
+  // with a direction (a trim up / trim down key) the caption moves left to make room for the arrow, as on the flaps keys
+  const head = k.dir
+    ? text(16, 34, 'TRIM', 18, C.dim, { anchor: 'start', spacing: 1.5 }) + (k.dir === 'up'
+      ? `<path d="M106 40 l12 -14 l12 14" fill="none" stroke="${C.text}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`
+      : `<path d="M106 26 l12 14 l12 -14" fill="none" stroke="${C.text}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`)
+    : caption('ELEV TRIM');
+  const inner = head +
     `<rect x="50" y="${top - 4}" width="16" height="${bot - top + 8}" rx="8" fill="#0d1014" stroke="${C.faint}" stroke-width="2"/>` + ticks +
     text(24, top + 6, 'UP', 13, C.dim, { anchor: 'middle' }) + text(24, bot + 2, 'DN', 13, C.dim, { anchor: 'middle' }) +
     (known ? `<path d="M46 ${y.toFixed(1)} l24 0 l10 -9 v18 l-10 -9" fill="${col}" stroke="${col}" stroke-width="2" stroke-linejoin="round" filter="url(#softglow)"/>` : '') +
@@ -186,7 +192,7 @@ function magnetos(k) {
   const l = known && (k.pos === 2 || k.pos >= 3), r = known && (k.pos === 1 || k.pos >= 3);
   const col = !known ? C.faint : k.pos === 0 ? C.red : k.pos === 3 ? C.green : C.amber;
   const lamp = (cx, on, label) => `<circle cx="${cx}" cy="50" r="10" fill="${on ? C.green : '#0d1014'}" stroke="${on ? C.green : C.faint}" stroke-width="2"${on ? ' filter="url(#glow)"' : ''}/>` + text(cx, 76, label, 14, on ? C.text : C.dim);
-  const inner = text(72, 26, 'MAGNETOS', 16, C.dim, { spacing: 1.5 }) + lamp(46, l, 'L') + lamp(98, r, 'R') +
+  const inner = text(72, 26, k.title || 'MAGNETOS', 16, C.dim, { spacing: 1.5 }) + lamp(46, l, 'L') + lamp(98, r, 'R') +
     text(72, 110, name, fit(name, 34, 120), col, { glow: known }) +
     (k.note ? text(72, 132, k.note, fit(k.note, 14, 124), C.dim) : '');
   return frame(inner, { pressed: k.pressed, ring: k.ring });
@@ -331,6 +337,7 @@ function tabGlyph(name, color) {
     case 'lights': return `<path d="M62 76 h20 M64 84 h16 M60 70 a18 18 0 1 1 24 0 l-2 4 h-20 Z" ${s}/>`;
     case 'radio': return `<path d="M48 80 h48 v-26 h-48 Z M58 54 l24 -18" ${s}/><circle cx="62" cy="67" r="5" fill="${color}"/>`;
     case 'systems': return `<path d="M58 34 v12 M86 34 v12 M50 46 h44 v14 a22 22 0 0 1 -44 0 Z M72 82 v8" ${s}/>`;
+    case 'soar': return `<path d="M42 86 c10 -4 14 -12 10 -20 c-4 -8 4 -18 14 -14 c10 4 18 -4 16 -14 M86 38 l-4 -10 l-10 4" ${s}/><path d="M92 74 l10 -10 l10 10 M102 64 v24" ${s}/>`;
     case 'engine': return `<circle cx="72" cy="58" r="8" fill="${color}"/><path d="M72 50 c-4 -14 2 -22 6 -22 c2 8 -2 16 -6 22 M79 62 c13 5 18 14 15 18 c-8 0 -14 -6 -15 -18 M65 62 c-13 5 -18 14 -15 18 c8 0 14 -6 15 -18" stroke="${color}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="${color}" fill-opacity="0.25"/>`;
     default: return '';
   }

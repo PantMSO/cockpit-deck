@@ -170,12 +170,13 @@ function sw(caption, label, input, opts = {}) {
 }
 
 const MAG = 'ENGINE_MAGNETO_1'; // 0 OFF, 1 R, 2 L, 3 BOTH, 4 START
-const magnetoKey = {
-  draw: (s) => ({ style: 'magnetos', pos: s.input(MAG) == null ? null : Math.round(s.input(MAG)), note: 'TAP: NEXT · HOLD: OFF' }),
-  // tap steps OFF -> R -> L -> BOTH and stops there; turning OFF needs a 1 s hold
-  tap: (s) => { const p = s.input(MAG); if (p == null) throw new Error('magnetos unavailable'); if (Math.round(p) < 3) s.setInput(MAG, Math.round(p) + 1); },
-  hold: { ms: 1000, fn: (s) => s.setInput(MAG, 0) },
-};
+/** Magneto key for one engine's ignition input: tap steps OFF -> R -> L -> BOTH and stops; OFF needs a 1 s hold. */
+const magnetoFor = (name, title) => ({
+  draw: (s) => ({ style: 'magnetos', title, pos: s.input(name) == null ? null : Math.round(s.input(name)), note: 'TAP: NEXT · HOLD: OFF' }),
+  tap: (s) => { const p = s.input(name); if (p == null) throw new Error('magnetos unavailable'); if (Math.round(p) < 3) s.setInput(name, Math.round(p) + 1); },
+  hold: { ms: 1000, fn: (s) => s.setInput(name, 0) },
+});
+const magnetoKey = magnetoFor(MAG);
 const starterKey = {
   draw: (s) => {
     const running = bool(s.v('ENG COMBUSTION:1', 'Bool'));
@@ -203,8 +204,14 @@ const fuelSelKey = {
   press: (s) => { const p = s.input(FUEL_SEL); if (p == null) throw new Error('fuel selector unavailable'); s.setInput(FUEL_SEL, (Math.round(p) + 1) % 3); },
 };
 
-const trimKey = {
-  draw: (s) => ({ style: 'trim', pct: s.v('ELEVATOR TRIM PCT', 'Percent Over 100'), note: 'BTN ' + stickLabel(s, 'trim'), ring: stickEcho(s, 'trim') }),
+/** Trim up / trim down key: shows the trim gauge, tap nudges, hold keeps trimming. ELEV_TRIM_UP raises ELEVATOR TRIM PCT (nose up), checked live. */
+const trimFor = (dir) => {
+  const echo = dir === 'up' ? 'trimUp' : 'trimDown';
+  return {
+    draw: (s) => { const b = stickLabel(s, echo); return { style: 'trim', dir, pct: s.v('ELEVATOR TRIM PCT', 'Percent Over 100'), note: b ? 'BTN ' + b : '', ring: stickEcho(s, echo) }; },
+    press: (s) => s.send(dir === 'up' ? 'ELEV_TRIM_UP' : 'ELEV_TRIM_DN'),
+    repeat: true,
+  };
 };
 const skyFlaps = (dir, event, echo) => ({
   draw: (s) => ({ style: 'flaps', dir, index: s.v('FLAPS HANDLE INDEX', 'Number'), count: s.v('FLAPS NUM HANDLE POSITIONS', 'Number'), degrees: [0, 10, 20, 30], ring: stickEcho(s, echo) }),
@@ -283,15 +290,18 @@ const KNOB = [
   { name: 'CRS', unit: 'NAV 1', dec: 'VOR1_OBI_DEC', inc: 'VOR1_OBI_INC', val: (s) => hdg(s.v('NAV OBS:1', 'Degrees')), color: C.cyan },
   { name: 'BARO', unit: 'IN HG', dec: 'KOHLSMAN_DEC', inc: 'KOHLSMAN_INC', val: (s) => { const x = s.v('KOHLSMAN SETTING HG:1', 'Inches of Mercury'); return x == null ? null : x.toFixed(2); }, color: C.cyan },
 ];
-const knobKey = {
-  draw: (s) => { const f = KNOB[s.knob()]; return { style: 'value', caption: `KNOB: ${f.name}`, value: f.val(s), unit: f.unit + ' · TAP', color: f.color, ring: C.cyan }; },
-  press: (s) => s.setKnob((s.knob() + 1) % KNOB.length),
-};
-const knobTurn = (dir) => ({
-  draw: (s) => ({ style: 'button', caption: KNOB[s.knob()].name, glyph: dir < 0 ? 'minus' : 'plus', label: 'HOLD TO SPIN' }),
-  press: (s) => s.send(dir < 0 ? KNOB[s.knob()].dec : KNOB[s.knob()].inc),
+const knobOf = (list, s) => list[s.knob() % list.length];
+const knobKeyFor = (list) => ({
+  draw: (s) => { const f = knobOf(list, s); return { style: 'value', caption: `KNOB: ${f.name}`, value: f.val(s), unit: f.unit + ' · TAP', color: f.color, ring: C.cyan }; },
+  press: (s) => s.setKnob((s.knob() % list.length + 1) % list.length),
+});
+const knobTurnFor = (list, dir) => ({
+  draw: (s) => ({ style: 'button', caption: knobOf(list, s).name, glyph: dir < 0 ? 'minus' : 'plus', label: 'HOLD TO SPIN' }),
+  press: (s) => s.send(dir < 0 ? knobOf(list, s).dec : knobOf(list, s).inc),
   repeat: true,
 });
+const knobKey = knobKeyFor(KNOB);
+const knobTurn = (dir) => knobTurnFor(KNOB, dir);
 /** AP mode key whose label is that mode's target. */
 function apMode(caption, event, modeVar, label) {
   return {
@@ -317,8 +327,9 @@ const SKYHAWK_TABS = [
 
 const SKYHAWK_PAGES = [
   // FLY: what the stick moves, shown back to you, plus the engine gauges you glance at
-  [trimKey, skyFlaps('up', 'FLAPS_DECR', 'flapsUp'), skyFlaps('down', 'FLAPS_INCR', 'flapsDown'), parkKey, stickKey,
-    rpmKey, tanksKey, oilKey, flowKey, pauseKey],
+  // trim up above trim down in the left column
+  [trimFor('up'), skyFlaps('up', 'FLAPS_DECR', 'flapsUp'), skyFlaps('down', 'FLAPS_INCR', 'flapsDown'), parkKey, stickKey,
+    trimFor('down'), rpmKey, tanksKey, oilKey, flowKey],
   // ENGINE: start and run
   [sw('MASTER', 'BAT', 'ELECTRICAL_BATTERY_1'), sw('MASTER', 'ALT', 'ELECTRICAL_ALTERNATOR_1'),
     sw('AVIONICS', 'BUS 1', 'ELECTRICAL_LINE_BUS_1_TO_AVIONICS_BUS_1'), sw('AVIONICS', 'BUS 2', 'ELECTRICAL_LINE_BUS_2_TO_AVIONICS_BUS_2'),
@@ -346,9 +357,10 @@ SKYHAWK_PAGES[3] = MSFS_PAGES[3];
 /** True when the loaded aircraft is a Cessna 172 (title "C172SP G1000 ..." / ATC model "...C172..."). */
 const isSkyhawk = (title, model) => /c172|skyhawk|\b172\b/i.test(String(title || '')) || /c172/i.test(String(model || ''));
 
-function msfsSlot(slot, page, mode = 'generic') {
-  const tabs = mode === 'skyhawk' ? SKYHAWK_TABS : MSFS_TABS;
-  const pages = mode === 'skyhawk' ? SKYHAWK_PAGES : MSFS_PAGES;
+/** `set` is 'generic', 'skyhawk', or a built page set {tabs, pages} (see aircraft.js). */
+function msfsSlot(slot, page, set = 'generic') {
+  const tabs = typeof set === 'object' ? set.tabs : set === 'skyhawk' ? SKYHAWK_TABS : MSFS_TABS;
+  const pages = typeof set === 'object' ? set.pages : set === 'skyhawk' ? SKYHAWK_PAGES : MSFS_PAGES;
   if (slot >= 10 && slot < 15) {
     const i = slot - 10;
     return {
@@ -406,4 +418,11 @@ const FORZA = [
 
 function forzaSlot(slot) { return FORZA[slot] || null; }
 
-module.exports = { msfsSlot, forzaSlot, isSkyhawk, MSFS_PAGES, MSFS_TABS, SKYHAWK_PAGES, SKYHAWK_TABS, KNOB, FORZA };
+module.exports = {
+  msfsSlot, forzaSlot, isSkyhawk, MSFS_PAGES, MSFS_TABS, SKYHAWK_PAGES, SKYHAWK_TABS, KNOB, FORZA,
+  // building blocks for the per-aircraft page sets in aircraft.js
+  parts: {
+    trimFor, n, bool, hdg, ON, tog, readout, btn, gearKey, pauseKey, sw, magnetoFor, stickEcho, stickLabel, stickKey, tanksKey,
+    knobKeyFor, knobTurnFor, apMode, apMaster, autoStartKey, mixtureKey, flowKey, chtKey,
+  },
+};

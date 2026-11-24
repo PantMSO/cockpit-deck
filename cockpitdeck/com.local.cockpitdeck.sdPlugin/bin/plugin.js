@@ -5,7 +5,8 @@ const path = require('path');
 const { execFile } = require('child_process');
 const WebSocket = require('ws');
 const { renderKey } = require('./render.js');
-const { msfsSlot, forzaSlot, isSkyhawk } = require('./layouts.js');
+const { msfsSlot, forzaSlot } = require('./layouts.js');
+const { classify, pagesFor, KINDS, KIND_NAMES } = require('./aircraft.js');
 const { Msfs } = require('./msfs.js');
 const { Forza } = require('./forza.js');
 const { Stick } = require('./stick.js');
@@ -40,14 +41,15 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e)));
 
 const DEFAULT_CFG = {
   autoSwitch: true,
-  // aircraft: "auto" picks the Skyhawk pages when a Cessna 172 is loaded; "skyhawk" or "generic" forces one set.
+  // aircraft: "auto" picks pages for the loaded aircraft (Cessna 172, piston, turboprop, jet, helicopter, glider, or
+  // the standard pages); "skyhawk", "piston", "turboprop", "jet", "heli", "glider" or "generic" forces one set.
   msfs: { aircraft: 'auto' },
   // Stick buttons Cockpit Deck acts on itself (only ones MSFS leaves unbound), and which held buttons light which keys.
   stick: {
     enabled: true,
     device: '046d:c215', // Logitech Extreme 3D Pro
     buttons: { 11: 'AP_DISC' },
-    echo: { trim: [4, 6], flapsUp: [7], flapsDown: [9], parkBrake: [10] },
+    echo: { trimUp: [4], trimDown: [6], flapsUp: [7], flapsDown: [9], parkBrake: [10] },
   },
   forza: { port: 5300, listen: '0.0.0.0', units: 'mph', keys: { rewind: 'BACKSPACE', horn: 'H', pause: 'ESC' } },
 };
@@ -81,20 +83,32 @@ const stick = new Stick(log);
 const pages = { msfs: 0 };
 const knob = { focus: 0 };
 let apDiscAt = 0;
-let mode = 'generic'; // MSFS page set: 'generic' | 'skyhawk'
+// MSFS pages follow the loaded aircraft: its kind (piston, jet, ...) picks the page set, and its input events fill it in.
+let kind = 'generic';
+let pageSet = 'generic'; // 'generic' | 'skyhawk' | {tabs, pages} from aircraft.js
+let pageSetKey = '';
 const TITLE = msfs.watch('TITLE', null);
 const ATC_MODEL = msfs.watch('ATC MODEL', null);
-let lastTitle = null;
+const CATEGORY = msfs.watch('CATEGORY', null);
+const ENGINE_TYPE = msfs.watch('ENGINE TYPE', 'Enum');
+const ENGINES = msfs.watch('NUMBER OF ENGINES', 'Number');
+const RETRACT = msfs.watch('IS GEAR RETRACTABLE', 'Bool');
 
 function updateMode() {
-  const want = cfg.msfs.aircraft === 'skyhawk' ? 'skyhawk'
-    : cfg.msfs.aircraft === 'generic' ? 'generic'
-      : (isSkyhawk(msfs.get(TITLE), msfs.get(ATC_MODEL)) ? 'skyhawk' : 'generic');
-  if (want !== mode) {
-    mode = want; pages.msfs = 0; knob.focus = 0;
-    log('msfs pages:', mode, '(title', JSON.stringify(msfs.get(TITLE)), 'model', JSON.stringify(msfs.get(ATC_MODEL)) + ', setting ' + cfg.msfs.aircraft + ')');
-    dirtyGame('msfs');
+  const forced = String(cfg.msfs.aircraft || 'auto').toLowerCase();
+  const want = KINDS.includes(forced) ? forced
+    : classify({ title: msfs.get(TITLE), model: msfs.get(ATC_MODEL), category: msfs.get(CATEGORY), engineType: msfs.get(ENGINE_TYPE) });
+  const ac = { cls: want, title: msfs.get(TITLE), engines: msfs.get(ENGINES), retract: msfs.get(RETRACT) === 1, engineType: msfs.get(ENGINE_TYPE) };
+  const key = JSON.stringify([ac.cls, ac.title, ac.engines, ac.retract, ac.engineType, msfs.inputsVersion]);
+  if (key === pageSetKey) return;
+  pageSetKey = key;
+  pageSet = pagesFor({ ...ac, inputs: msfs.inputNames() });
+  if (want !== kind) {
+    kind = want; pages.msfs = 0; knob.focus = 0;
+    log('msfs pages:', KIND_NAMES[kind], '(title', JSON.stringify(msfs.get(TITLE)), 'category', JSON.stringify(msfs.get(CATEGORY)),
+      'engine type', msfs.get(ENGINE_TYPE), 'engines', msfs.get(ENGINES) + ', setting ' + forced + ')');
   }
+  dirtyGame('msfs');
 }
 
 function startStick() {
@@ -114,7 +128,7 @@ const devices = new Map();  // device id -> { type, cols }
 let dirty = new Set();
 
 function slotDef(k) {
-  return k.game === 'forza' ? forzaSlot(k.slot) : msfsSlot(k.slot, pages.msfs, mode);
+  return k.game === 'forza' ? forzaSlot(k.slot) : msfsSlot(k.slot, pages.msfs, pageSet);
 }
 
 // Everything a key definition may use.
@@ -318,13 +332,12 @@ ws.on('error', (e) => log('ws error', e.message));
 
 msfs.on('change', () => {
   const t = msfs.get(TITLE);
-  if (t && lastTitle && t !== lastTitle) { log('aircraft changed:', t); msfs.refreshInputs(); }
-  if (t) lastTitle = t;
+  if (msfs.noteTitle(t)) log('aircraft changed:', t);
   updateMode();
   dirtyGame('msfs');
 });
 msfs.on('pause', () => dirtyGame('msfs'));
-msfs.on('status', (up) => { if (!up) lastTitle = null; updateMode(); dirtyGame('msfs'); });
+msfs.on('status', () => { updateMode(); dirtyGame('msfs'); });
 forza.on('data', () => dirtyGame('forza'));
 forza.on('status', () => dirtyGame('forza'));
 
